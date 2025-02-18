@@ -1,0 +1,20 @@
++ APF - Artificial Potential Field
++ DA - Dijkstra's Algorithm
++ PP - Pure Pursuit
++ PID - 
+
+APF sẽ tính toán trước WEIGHT (cost) của mỗi đoạn đường (grid)
+DA sẽ dựa vào WEIGHT đã được tính từ APF => tìm ra con đường phù hợp nhất (đỡ tốn nhất = least costly)
+PP sẽ dựa trên con đường đã được vẽ ra từ DA => tính vận tốc để bám theo con đường đó và gửi cho xe
+
+------
+
+WEIGHT được tạo ra từ OBSTACLES
+OBSTACLES (hộp, ô vuông, hình tròn, ...) được detect từ chương trình object_detection
+
+------
+
+Encoder đọc w (vận tốc góc) của xe và truyền vào bộ điều khiển PID
+PID so sánh Encoder_value & FinalAngularSpeed_value sau đó tune PWM và truyền ra động cơ
+
+==> LOOP CONTINUOUSLY
