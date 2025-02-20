@@ -18,3 +18,20 @@ Encoder đọc w (vận tốc góc) của xe và truyền vào bộ điều khi�
 PID so sánh Encoder_value & FinalAngularSpeed_value sau đó tune PWM và truyền ra động cơ
 
 ==> LOOP CONTINUOUSLY
+
+
+------
+
+GUI
+5 nút: 
+- 3 nút luôn hiện: START, RESET, CLEAR
+- 1 nút ẩn: RUN
+
+Công dụng:
+- START (ON): Bắt đầu detect ArUco, Grayscale, Contour, Edge detection. Xuất waypoints, path (tính toán vẽ đường xong xuôi)
+- RESET (OFF): Dừng chương trình, dừng xe lại, 
+- CLEAR: Xóa waypoints vừa chọn
+- RUN: Xe chạy khi đã có đường Path Planning (Enable Pure Pursuit)
+
+
+
