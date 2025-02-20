@@ -461,3 +461,7 @@ When you combine DA and APF, you’re essentially leveraging two complementary i
   A global path that respects both obstacle avoidance and goal convergence. This path can then be smoothed for a better trajectory.
 
 This synergy between DA and APF gives you a robust mechanism for navigating through complex environments while maintaining a direct path to your target.
+
+---
+
+![alt text](image.png)
