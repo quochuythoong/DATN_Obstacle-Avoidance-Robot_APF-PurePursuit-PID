@@ -23,7 +23,7 @@ PID so sánh Encoder_value & FinalAngularSpeed_value sau đó tune PWM và truy�
 ------
 
 GUI
-5 nút: 
+4 nút: 
 - 3 nút luôn hiện: START, RESET, CLEAR
 - 1 nút ẩn: RUN
 

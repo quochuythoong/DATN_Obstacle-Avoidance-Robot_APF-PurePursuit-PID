@@ -30,7 +30,7 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
     return interpolated_points
 
 def main():
-    image_path = "Picture3.jpg"  # Change this if necessary
+    image_path = "Picture2.jpg"  # Change this if necessary
     image = cv2.imread(image_path)
     if image is None:
         print("Error: Could not load image. Check the path and try again.")

@@ -2,52 +2,123 @@
 import cv2
 import numpy as np
 import cv2.aruco as aruco
+import matplotlib.pyplot as plt
+
+output_filename = "Processed_image.jpg"
 
 def initialize_camera():
-    cap = cv2.VideoCapture(0)  # Open camera
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    """ Initializes and returns the camera object """
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     return cap
 
+def release_camera(cap):
+    """ Releases the camera resource """
+    cap.release()
+    cv2.destroyAllWindows()
+
 def process_frame(cap):
+    """ Captures and processes a frame from the camera """
     ret, frame = cap.read()
     if not ret:
-        print("Failed to capture image")
         return None, None
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return frame, gray
 
-def detect_aruco(frame, gray):
-    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
-    aruco_params = aruco.DetectorParameters()
-    corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
-    center = None
-    if ids is not None:
-        cv2.aruco.drawDetectedMarkers(frame, corners, ids)
-        corner_points = corners[0][0]
-        center = tuple(np.mean(corner_points, axis=0).astype(int))
-        vector = corner_points[0] - corner_points[1]
-        angle = np.arctan2(vector[1], vector[0])
-        end_point = (int(center[0] + 50 * np.cos(angle)), int(center[1] + 50 * np.sin(angle)))
-        cv2.arrowedLine(frame, center, end_point, (0, 255, 0), 2, tipLength=0.3)
-    return corners, ids, center
+def interpolate_waypoints(waypoints, step_distance=1.0):
+    interpolated_points = []
+    previous_point = None
 
-def detect_obstacles(frame, gray):
-    _, thresh = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    obstacle_boxes = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if w * h > 500:
-            obstacle_boxes.append((x, y, x + w, y + h))
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-    return obstacle_boxes
+    for i in range(len(waypoints) - 1):
+        start = np.array(waypoints[i])
+        end = np.array(waypoints[i + 1])
+        distance = np.linalg.norm(end - start)
+        if distance == 0:
+            continue
+        direction = (end - start) / distance
+        num_steps = int(distance // step_distance) + 1
+
+        for step in range(num_steps):
+            interpolated_point = start + step * step_distance * direction
+            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
+            if rounded_point != previous_point:
+                interpolated_points.append(rounded_point)
+                previous_point = rounded_point
+
+    last_point = (int(round(waypoints[-1][0])), int(round(waypoints[-1][1])))
+    if last_point != previous_point:
+        interpolated_points.append(last_point)
+
+    return interpolated_points
 
 def detect_aruco_and_obstacles(frame, gray):
-    corners, ids, center = detect_aruco(frame, gray)
-    obstacles = detect_obstacles(frame, gray)
-    return corners, ids, center, obstacles
+    """ Detects ArUco markers and obstacles in the frame """
+    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+    parameters = aruco.DetectorParameters()
+    corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+    
+    aruco_coordinates = []
+    if ids is not None:
+        for i, corner in enumerate(corners):
+            x, y = int(corner[0][:, 0].mean()), int(corner[0][:, 1].mean())
+            aruco_coordinates.append((ids[i][0], x, y))
+            cv2.putText(frame, f"ID: {ids[i][0]}", (x, y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+    
+    # Detect obstacles (everything that isn't an ArUco marker)
+    obstacle_coordinates = []
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    contours, _ = cv2.findContours(edges.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-def release_camera(cap):
-    cap.release()
-    cv2.destroyAllWindows()
+    # If an ArUco marker is detected, fill its region in the edges image with black (0)
+    if ids is not None:
+        # Create a mask with the same size as the edges image
+        mask = np.zeros_like(edges)
+        for marker in corners:
+            pts = marker.reshape((-1, 1, 2)).astype(np.int32)
+            cv2.fillPoly(mask, [pts], 255)
+        # Dilate the mask to extend the filled region (e.g., by 5 pixels)
+        kernel = np.ones((5, 5), np.uint8)
+        dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+        # Set the dilated region in the edges image to black
+        edges[dilated_mask == 255] = 0
+    # -------------------------------------------
+
+    # Prepare a Matplotlib figure to display the edge detection image
+    plt.figure(figsize=(10, 10))
+    plt.imshow(edges, cmap='gray')
+
+    for idx, cnt in enumerate(contours):
+        # Convert contour points into a list of (x, y) tuples
+        coords = cnt.reshape(-1, 2).tolist()
+        print(f"\nContour {idx} has {len(coords)} original points:")
+        for pt in coords:
+            print(pt)
+        
+        # Interpolate along the contour's points using the provided function
+        interp_points = interpolate_waypoints(coords, step_distance=1.0)
+        print(f"\nContour {idx} interpolated points (total {len(interp_points)}):")
+        for pt in interp_points:
+            print(pt)
+        
+        # Plot the interpolated points on the edge detection image
+        interp_points_array = np.array(interp_points)
+        plt.scatter(interp_points_array[:, 0], interp_points_array[:, 1],
+                    s=5, label=f"Contour {idx} interp")
+    
+    # Display the Matplotlib figure
+    plt.title("Edge Detection with Interpolated Coordinates (ArUco Ignored)")
+    plt.legend()
+    plt.axis("off")
+    plt.savefig(output_filename, bbox_inches='tight', pad_inches=0)
+    plt.close()  # Close the figure to prevent display
+
+    print(f"Processed image saved as {output_filename}")
+
+    return aruco_coordinates, obstacle_coordinates, frame
+
+
+
