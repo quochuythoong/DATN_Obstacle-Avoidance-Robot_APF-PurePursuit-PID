@@ -90,7 +90,7 @@ def main():
             aruco_coordinates, obstacle_coordinates, processed_frame = detection.detect_aruco_and_obstacles(frame, gray)
             coordinates_ready = True
             print("Aruco Coordinates:", aruco_coordinates)
-            print("Obstacle Coordinates:", obstacle_coordinates)
+            # print("Obstacle Coordinates:", obstacle_coordinates)
         
         draw_overlay(frame)
         cv2.imshow("Unified View", frame)
