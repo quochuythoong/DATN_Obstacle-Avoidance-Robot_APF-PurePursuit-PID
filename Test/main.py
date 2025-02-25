@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 import aruco_obstacle_detection as detection
+from utils import frame_height
 
 # Global variables
 detection_active = False  # Flag to enable detection
@@ -42,7 +43,7 @@ def mouse_callback(event, x, y, flags, param):
         elif coordinates_ready and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
             print("RUN button pressed.")
         else:
-            goal_set_points.append((x, y))
+            goal_set_points.append((x, frame_height - y))
             print("Selected point:", goal_set_points[-1])
 
 def draw_overlay(frame):
@@ -66,11 +67,11 @@ def draw_overlay(frame):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
     # Draw the set points as red dots
     for pt in goal_set_points:
-        cv2.circle(frame, pt, 3, (0, 0, 255), -1)
+        cv2.circle(frame, (pt[0], frame_height - pt[1]), 10, (0, 0, 255), -1)
     # If a final goal is confirmed, draw each point separately
     if final_goal is not None:
         for pt in final_goal:
-            cv2.circle(frame, pt, 4, (0, 0, 255), -1)
+            cv2.circle(frame, (pt[0], frame_height - pt[1]), 15, (0, 0, 255), -1)
 
 def main():
     global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates
