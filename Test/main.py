@@ -2,7 +2,9 @@
 import cv2
 import numpy as np
 import aruco_obstacle_detection as detection
+from apf_1st_implement import apf_path_planning
 from utils import frame_height
+import matplotlib.pyplot as plt
 
 # Global variables
 detection_active = False  # Flag to enable detection
@@ -98,7 +100,29 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
+    print(obstacle_coordinates)
+    path, potential_values = apf_path_planning(aruco_coordinates[0], goal_set_points, obstacle_coordinates)
     
+    # Plot the results
+    plt.figure(figsize=(6,11))
+    plt.plot(path[:, 0], path[:, 1], "b.-", label="Smoothed Path")
+    plt.scatter(*zip(*obstacle_coordinates), color="red", label="Obstacles")
+    # plt.scatter(*(list(goal_set_points)), color="green", marker="x", s=100, label="Goal")
+    # plt.scatter(*(list(aruco_coordinates[0])), color="black", marker="o", label="Start")
+    plt.legend()
+    plt.grid()
+    plt.title("Artificial Potential Field Path Planning with Smoothing")
+    # plt.show()
+
+    # Plot the potential field evolution
+    plt.figure()
+    plt.plot(potential_values, "r-", label="Potential Field Value")
+    plt.xlabel("Step")
+    plt.ylabel("Potential")
+    plt.title("Potential Field over Steps")
+    plt.legend()
+    plt.grid()
+    plt.show()
     detection.release_camera(cap)
     
 if __name__ == "__main__":

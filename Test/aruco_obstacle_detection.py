@@ -11,8 +11,8 @@ output_filename = "Processed_image.jpg"
 def initialize_camera():
     """ Initializes and returns the camera object """
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    #cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     return cap
 
 def release_camera(cap):
@@ -84,7 +84,7 @@ def detect_aruco_and_obstacles(frame, gray):
     if ids is not None:
         for i, corner in enumerate(corners):
             x, y = int(corner[0][:, 0].mean()), int(corner[0][:, 1].mean())
-            aruco_coordinates.append((ids[i][0], x, frame_height - y))
+            aruco_coordinates.append((x, frame_height - y))
             # cv2.putText(frame, f"ID: {ids[i][0]}", (x, y - 10),
             #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             # cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
@@ -125,7 +125,7 @@ def detect_aruco_and_obstacles(frame, gray):
         inverted_interp_points = [(x, frame_height - y) for x, y in interp_points]
 
         # Append only the current contour's points
-        obstacle_coordinates.append(inverted_interp_points)
+        obstacle_coordinates= obstacle_coordinates + inverted_interp_points
         
         # Plot the interpolated points on the edge detection image
         interp_points_array = np.array(interp_points)
@@ -142,7 +142,7 @@ def detect_aruco_and_obstacles(frame, gray):
     print(f"Processed image saved as {output_filename}")
 
     # Save detected coordinates to a .txt file
-    save_coordinates_to_txt("Processed_image_data.txt", aruco_coordinates, obstacle_coordinates)
+    # save_coordinates_to_txt("Processed_image_data.txt", aruco_coordinates, obstacle_coordinates)
 
     return aruco_coordinates, obstacle_coordinates, frame
 

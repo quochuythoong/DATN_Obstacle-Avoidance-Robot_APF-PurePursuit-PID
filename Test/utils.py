@@ -1,5 +1,5 @@
 # Frame dimensions
-frame_height = 1080  
+frame_height = 640  
 frame_width = 1920
 
 # Parameters for Pure Pursuit
