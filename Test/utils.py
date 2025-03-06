@@ -1,6 +1,6 @@
 # Frame dimensions
 frame_height = 640  
-frame_width = 1920
+frame_width = 480
 
 # Parameters for Pure Pursuit
 ConstVelocity = 0.05  # Constant velocity in m/s

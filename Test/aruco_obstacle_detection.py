@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import cv2.aruco as aruco
 import matplotlib.pyplot as plt
-import json
 from utils import frame_height
 
 output_filename = "Processed_image.jpg"
@@ -11,8 +10,6 @@ output_filename = "Processed_image.jpg"
 def initialize_camera():
     """ Initializes and returns the camera object """
     cap = cv2.VideoCapture(0)
-    #cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     return cap
 
 def release_camera(cap):
@@ -31,8 +28,13 @@ def process_frame(cap):
 def interpolate_waypoints(waypoints, step_distance=1.0):
     interpolated_points = []
     previous_point = None
+    n = len(waypoints)
 
-    for i in range(len(waypoints) - 1):
+    if n < 2:
+        return waypoints
+    
+    # Interpolate between consecutive points
+    for i in range(n - 1):
         start = np.array(waypoints[i])
         end = np.array(waypoints[i + 1])
         distance = np.linalg.norm(end - start)
@@ -48,31 +50,41 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
                 interpolated_points.append(rounded_point)
                 previous_point = rounded_point
 
-    last_point = (int(round(waypoints[-1][0])), int(round(waypoints[-1][1])))
-    if last_point != previous_point:
-        interpolated_points.append(last_point)
+    # Interpolate between the last point and the first point to close the contour
+    start = np.array(waypoints[-1])
+    end = np.array(waypoints[0])
+    distance = np.linalg.norm(end - start)
+    if distance != 0:
+        direction = (end - start) / distance
+        num_steps = int(distance // step_distance) + 1
+        for step in range(1, num_steps):  # start from 1 to avoid duplicating the last point
+            interpolated_point = start + step * step_distance * direction
+            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
+            if rounded_point != previous_point:
+                interpolated_points.append(rounded_point)
+                previous_point = rounded_point
 
     return interpolated_points
 
-def save_coordinates_to_txt(file_name, aruco_coordinates, obstacle_coordinates):
-    with open(file_name, "w") as file:
-        file.write("Aruco Coordinates:\n")
-        for aruco in aruco_coordinates:
-            file.write(f"ID {aruco[0]}: (X: {aruco[1]}, Y: {aruco[2]})\n")
+# def save_coordinates_to_txt(file_name, aruco_coordinates, obstacle_coordinates):
+#     with open(file_name, "w") as file:
+#         file.write("Aruco Coordinates:\n")
+#         for aruco in aruco_coordinates:
+#             file.write(f"ID {aruco[0]}: (X: {aruco[1]}, Y: {aruco[2]})\n")
 
-        file.write("\nObstacle Coordinates:\n")
-        for i, obstacle in enumerate(obstacle_coordinates):
-            file.write(f"Obstacle {i + 1}:\n")
-            for point in obstacle:
-                file.write(f"({point[0]}, {point[1]}) ")
-            file.write("\n")  # New line after each obstacle
+#         file.write("\nObstacle Coordinates:\n")
+#         for i, obstacle in enumerate(obstacle_coordinates):
+#             file.write(f"Obstacle {i + 1}:\n")
+#             for point in obstacle:
+#                 file.write(f"({point[0]}, {point[1]}) ")
+#             file.write("\n")  # New line after each obstacle
         
-        # Write the full array of obstacle_coordinates in a readable format
-        file.write("\nFull Obstacle Coordinates (Array of Arrays):\n")
-        file.write("[\n")
-        for obstacle in obstacle_coordinates:
-            file.write(f"  {obstacle},\n")
-        file.write("]\n")
+#         # Write the full array of obstacle_coordinates in a readable format
+#         file.write("\nFull Obstacle Coordinates (Array of Arrays):\n")
+#         file.write("[\n")
+#         for obstacle in obstacle_coordinates:
+#             file.write(f"  {obstacle},\n")
+#         file.write("]\n")
 
 def detect_aruco_and_obstacles(frame, gray):
     """ Detects ArUco markers and obstacles in the frame """
@@ -83,11 +95,23 @@ def detect_aruco_and_obstacles(frame, gray):
     aruco_coordinates = []
     if ids is not None:
         for i, corner in enumerate(corners):
+            points = corner[0]
+
+            # Calculate the center of the ArUco marker
             x, y = int(corner[0][:, 0].mean()), int(corner[0][:, 1].mean())
-            aruco_coordinates.append((x, frame_height - y))
-            # cv2.putText(frame, f"ID: {ids[i][0]}", (x, y - 10),
-            #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            # cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+            aruco_coordinates = [x, frame_height - y]
+
+            # Calculate the orientation angle
+            vec_x, vec_y = points[1][0] - points[0][0], points[0][1] - points[1][1]
+            angle = np.arctan2(vec_y, vec_x) * 180 / np.pi
+
+            # Draw the center and orientation arrow
+            cv2.circle(frame, (x, frame_height - y), 5, (0, 255, 0), -1)  # Green circle at the center
+            arrow_length = 50
+            end_x = int(x + arrow_length * np.cos(angle * np.pi / 180))
+            end_y = int(y + arrow_length * np.sin(angle * np.pi / 180))
+            end_point_arrow = (end_x, end_y)
+            # cv2.arrowedLine(frame, (x, frame_height - y), (end_x, frame_height - end_y), (0, 255, 0), 2)  # Green arrow   
     
     # Detect obstacles (everything that isn't an ArUco marker)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -125,13 +149,12 @@ def detect_aruco_and_obstacles(frame, gray):
         inverted_interp_points = [(x, frame_height - y) for x, y in interp_points]
 
         # Append only the current contour's points
-        obstacle_coordinates= obstacle_coordinates + inverted_interp_points
+        obstacle_coordinates = obstacle_coordinates + inverted_interp_points
         
         # Plot the interpolated points on the edge detection image
         interp_points_array = np.array(interp_points)
         plt.scatter(interp_points_array[:, 0], interp_points_array[:, 1],
                     s=5, label=f"Contour {idx} interp")
-    # print(obstacle_coordinates)
 
     # Display the Matplotlib figure
     plt.title("Edge Detection with Interpolated Coordinates (ArUco Ignored)")
@@ -144,7 +167,7 @@ def detect_aruco_and_obstacles(frame, gray):
     # Save detected coordinates to a .txt file
     # save_coordinates_to_txt("Processed_image_data.txt", aruco_coordinates, obstacle_coordinates)
 
-    return aruco_coordinates, obstacle_coordinates, frame
+    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle
 
 
 
