@@ -115,7 +115,6 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     output_frame_filename = "final_path.jpg"
     cv2.imwrite(output_frame_filename, frame)
     print(f"Final path saved as {output_frame_filename}")
-
 '''
     # Plot the results
     plt.figure(figsize=(6,11))
@@ -184,6 +183,7 @@ def main():
     
     # send_params(0, 0)  # Stop the robot
     detection.release_camera(cap)
+
     
 if __name__ == "__main__":
     main()

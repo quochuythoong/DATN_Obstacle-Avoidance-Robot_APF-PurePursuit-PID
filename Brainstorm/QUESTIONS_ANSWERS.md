@@ -464,4 +464,157 @@ This synergy between DA and APF gives you a robust mechanism for navigating thro
 
 ---
 
+Question: Predictive APF approach?
+
+Answer:
+Below is one approach to incorporate a predictive element into the gradient calculation. In this version, before returning the gradient, we simulate a short forward trajectory (over a “prediction horizon”) using the current gradient. Then we look for the first point where the potential field “dips” (or simply pick the point with minimum potential) and recalculate the gradient as the normalized vector from the current position to that predicted point. This way, if the potential increases and then drops abruptly, the algorithm “chooses” a smoother temporary goal.
+
+Try replacing your current gradient function with one like the following:
+
+```python
+import numpy as np
+import random
+
+def predictive_gradient(q, goal, obstacles, k_att, k_rep, d0, epsilon=1e-3, prediction_horizon=10):
+    """
+    Predictive gradient: simulates a short trajectory along the current gradient,
+    then selects a temporary goal (the point where potential first drops or the minimum potential point)
+    and returns the direction from q to that temporary goal.
+    """
+    # Compute initial gradient as before (using finite differences)
+    grad = np.zeros_like(q)
+    base_pot = total_potential(q, goal, obstacles, k_att, k_rep, d0)
+    for i in range(len(q)):
+        q_step = q.copy()
+        q_step[i] += epsilon
+        grad[i] = (total_potential(q_step, goal, obstacles, k_att, k_rep, d0) - base_pot) / epsilon
+    grad = -grad  # Attractive: move in negative potential gradient
+
+    # Add repulsive gradient
+    _, rep_grad = repulsive_potential(q, obstacles, k_rep, d0)
+    grad += rep_grad
+
+    # Simulate forward trajectory along the current gradient
+    predicted_potentials = []
+    predicted_points = []
+    q_current = q.copy()
+    for i in range(prediction_horizon):
+        pot = total_potential(q_current, goal, obstacles, k_att, k_rep, d0)
+        predicted_potentials.append(pot)
+        predicted_points.append(q_current.copy())
+        q_current = q_current + epsilon * grad  # small step along grad
+
+    # Find first index where potential decreases relative to the previous step
+    temp_index = None
+    for i in range(1, len(predicted_potentials)):
+        if predicted_potentials[i] < predicted_potentials[i - 1]:
+            temp_index = i
+            break
+
+    if temp_index is not None:
+        temp_goal = predicted_points[temp_index - 1]  # use point before the drop
+    else:
+        # Otherwise, choose the point with minimum potential
+        temp_goal = predicted_points[np.argmin(predicted_potentials)]
+
+    # Compute new gradient direction from current position to temporary goal
+    predictive_grad = temp_goal - q
+    norm_pg = np.linalg.norm(predictive_grad)
+    if norm_pg > 0:
+        predictive_grad = predictive_grad / norm_pg
+    else:
+        predictive_grad = grad  # fallback
+
+    # If the computed gradient is extremely small, add a small random perturbation
+    if np.linalg.norm(predictive_grad) < 1e-3:
+        small_value = 0.2
+        predictive_grad += np.array([random.uniform(-small_value, small_value),
+                                     random.uniform(-small_value, small_value)])
+    
+    return predictive_grad
+
+# Then, in your apf_path_planning function, call predictive_gradient instead of gradient:
+def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=50.0, step_size=15, max_iters=5000):
+    path = [start]
+    q = np.array(start, dtype=np.float64).flatten()
+    goal = np.array(goal, dtype=np.float64).flatten()
+    obstacles = np.array(obstacles, dtype=np.float64) if obstacles else np.empty((0, 2))
+    potential_values = []
+    
+    for _ in range(max_iters):
+        if q.shape != (2,):
+            print(f"Error: Invalid q value {q}. Expected shape (2,).")
+            return np.empty((0, 2)), []
+        
+        # Use the predictive gradient function here:
+        grad = predictive_gradient(q, goal, obstacles, k_att, k_rep, d0, epsilon=1e-3, prediction_horizon=10)
+        
+        # Normalize gradient and apply step size
+        grad_norm = np.linalg.norm(grad)
+        if grad_norm > 0:
+            grad = (grad / grad_norm) * step_size
+        
+        q += step_size * grad
+        path.append(q.copy())
+        potential_values.append(total_potential(q, goal, obstacles, k_att, k_rep, d0))
+        
+        if np.linalg.norm(q - goal) < 0.1:
+            break
+    
+    path = np.array(path, dtype=np.float64).reshape(-1, 2)
+    # Smooth the path if enough points exist
+    if path.shape[0] > 1:
+        from scipy.ndimage import gaussian_filter1d
+        path[:, 0] = gaussian_filter1d(path[:, 0], sigma=2)
+        path[:, 1] = gaussian_filter1d(path[:, 1], sigma=2)
+    
+    return path, potential_values
+```
+
+### **Explanation:**
+- **Predictive Part:**  
+  - We simulate a short trajectory (`prediction_horizon` steps) along the current gradient.
+  - We record the potential at each predicted point.
+  - We then select a temporary goal based on the first drop in potential or the minimum potential over the horizon.
+  - The new gradient is then computed as the normalized vector from the current position `q` to that temporary goal.
+  
+- **Integration:**  
+  - Replace the simple gradient calculation in your APF path planning with this predictive version.
+  - This allows your path planning to “look ahead” and choose a smoother next goal when an abrupt drop in potential occurs.
+
+You may need to tune parameters like `epsilon`, `prediction_horizon`, and `step_size` to achieve the desired behavior. Let me know if you need further modifications!
+---
+
+### **Predictive Artificial Potential Field (PAPF) – Key Flow**  
+
+1. **Compute Standard APF**  
+   - Calculate attractive force (goal) and repulsive force (obstacle).  
+   - Get an initial movement direction.  
+
+2. **Predict Future Path**  
+   - Simulate a short trajectory forward using the APF direction.  
+   - Store predicted positions and their potential values.  
+
+3. **Detect Potential Drop**  
+   - Identify the first position where the potential decreases.  
+   - If found, set it as a **temporary goal**.  
+
+4. **Adjust Movement**  
+   - Move toward the temporary goal instead of the original APF direction.  
+   - Ensures smoother obstacle avoidance and prevents local minima trapping.  
+
+5. **Repeat Until Goal is Reached**  
+   - Continuously update positions using the predictive strategy.  
+
+This **anticipates obstacles** and adjusts accordingly, improving path efficiency. 🚀
+
+---
+
 ![alt text](image.png)
+
+![alt text](image-2.png)
+
+# Why it has to bound the exact shape, not just an elip surrounding the object (Exact shape = Optimized path, Elip bound = Not optimized)
+![alt text](image-3.png)
+
+![alt text](image-4.png)
