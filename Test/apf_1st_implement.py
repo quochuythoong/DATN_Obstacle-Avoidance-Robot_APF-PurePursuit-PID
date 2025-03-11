@@ -7,7 +7,6 @@ from scipy.ndimage import gaussian_filter1d
 ###############################################################################
 step_size         = 1.0    # How far the robot moves each iteration
 epsilon           = 1e-3   # Small step used in gradient/prediction
-prediction_horizon= 70     # Number of steps for predictive lookahead
 # q               = current position 
 # goal            = target position 
 # obstacles       = list of obstacle positions
@@ -41,37 +40,6 @@ def total_potential(q, goal, obstacles, k_att, k_rep, d0):
     U_rep, _ = repulsive_potential(q, obstacles, k_rep, d0)  # Ignore gradient
     return U_att + U_rep
 
-''' --------------------------------- BASIC APF GRADIENT CALCULATION ---------------------------------
-def gradient(q, goal, obstacles, k_att, k_rep, d0, epsilon):
-    grad = np.zeros_like(q)
-
-    # Compute attractive gradient
-    for i in range(len(q)):
-        q_step = q.copy()
-        q_step[i] += epsilon  # Small step in dimension i
-        grad[i] = (total_potential(q_step, goal, obstacles, k_att, k_rep, d0) - total_potential(q, goal, obstacles, k_att, k_rep, d0)) / epsilon
-    
-    grad = -grad  # Move in the negative gradient predictive_grad
-
-    # Compute repulsive gradient
-    _, rep_grad = repulsive_potential(q, obstacles, k_rep, d0)
-
-    # Combine attractive and repulsive gradients
-    grad += rep_grad  
-
-    # If stuck in a local minimum, apply a small random perturbation
-    if np.linalg.norm(grad) < 1e-3:  
-        small_value = 0.2  # Fine-tuned perturbation range, can be adjusted
-        grad += np.array([random.uniform(-small_value, small_value), 
-                          random.uniform(-small_value, small_value)])
-    
-    # Limit step size
-    if np.linalg.norm(grad) > (1/step_size):
-        grad = grad / np.linalg.norm(grad)
-
-    return grad
---------------------------------- BASIC APF GRADIENT CALCULATION ---------------------------------'''
-
 def interpolate_waypoints(waypoints, step_distance=1.0):
     interpolated_points = []
     previous_point = None
@@ -99,12 +67,9 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
 
     return interpolated_points
 
-# --- Predictive APF ---
-def predictive_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size, prediction_horizon):
-    """
-    Predictive APF using step-by-step horizon updates.
-    """
-    predicted_path = [q.copy()]
+# --- Basic APF ---
+def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
+    gradient = [q.copy()]
     
     # Compute APF force at current position
     grad = np.zeros_like(q)
@@ -126,32 +91,31 @@ def predictive_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size, pre
         grad = (grad / grad_norm) * step_size
     
     # Update position and store in predicted path
-    for _ in range(prediction_horizon):
-        q = q + grad
-        predicted_path.append(q.copy())
+    q = q + grad
+    gradient.append(q.copy())
 
-    # If predictive_path is very small => add random perturbation
-    if np.linalg.norm(predicted_path) < 1e-3:
-        small_value = 0.2
-        noise = np.array([random.uniform(-small_value, small_value),
-                          random.uniform(-small_value, small_value)])
-        predicted_path += noise
-        predicted_path /= (np.linalg.norm(predicted_path) + 1e-9)
+    # If gradient is very small => add random perturbation
+    # if np.linalg.norm(gradient) < 1e-3:
+    #     small_value = 0.2
+    #     noise = np.array([random.uniform(-small_value, small_value),
+    #                       random.uniform(-small_value, small_value)])
+    #     gradient += noise
+    #     gradient /= (np.linalg.norm(gradient) + 1e-9)
 
-    return predicted_path
+    return gradient
 
-def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=80.0, max_iters=5000):
+def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=50.0, max_iters=5000):
     """
     APF path planning using predictive APF for smooth navigation.
     """
-    global epsilon, step_size, prediction_horizon
+    global epsilon, step_size
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
     goal = np.array(goal, dtype=np.float64).flatten()
     obstacles = np.array(obstacles, dtype=np.float64) if obstacles else np.empty((0, 2))
     
     for _ in range(max_iters):
-        predicted_path = predictive_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size, prediction_horizon)
+        predicted_path = basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size)
         
         # Choose the best predicted point (here: last one for smoothing)
         q = predicted_path[-1]
