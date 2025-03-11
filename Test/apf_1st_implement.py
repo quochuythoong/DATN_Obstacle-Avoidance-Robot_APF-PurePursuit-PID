@@ -2,12 +2,18 @@ import numpy as np
 import random
 from scipy.ndimage import gaussian_filter1d
 
-# Constants
-step_size = 1
-epsilon = 1e-3
-prediction_horizon = 10
-# q = current position, goal = target position, obstacles = list of obstacle positions
-# k_att = attractive potential constant, k_rep = repulsive potential constant, d0 = repulsive potential range
+###############################################################################
+# USER-ADJUSTABLE CONSTANTS
+###############################################################################
+step_size         = 1.0    # How far the robot moves each iteration
+epsilon           = 1e-3   # Small step used in gradient/prediction
+prediction_horizon= 70     # Number of steps for predictive lookahead
+# q               = current position 
+# goal            = target position 
+# obstacles       = list of obstacle positions
+# k_att           = attractive potential constant 
+# k_rep           = repulsive potential constant
+# d0              = repulsive potential range
 
 def attractive_potential(q, goal, k_att):
     return 0.5 * k_att * np.linalg.norm(q - goal) ** 2
@@ -66,132 +72,103 @@ def gradient(q, goal, obstacles, k_att, k_rep, d0, epsilon):
     return grad
 --------------------------------- BASIC APF GRADIENT CALCULATION ---------------------------------'''
 
-def distance_from_line(pt, line_start, line_end):
-    """
-    Returns the perpendicular distance of point `pt` from the line
-    defined by line_start -> line_end.
+def interpolate_waypoints(waypoints, step_distance=1.0):
+    interpolated_points = []
+    previous_point = None
+    n = len(waypoints)
 
-    Detect deviation from a straight line (q -> goal) by measuring
-    the perpendicular distance of a point from the line.
-    """
-    # Parametric or vector form: line(t) = line_start + t*(line_end - line_start)
-    # Distance formula is cross((pt - start), (end - start)) / |end - start|
-    line_vec = line_end - line_start
-    line_len = np.linalg.norm(line_vec) + 1e-9  # avoid zero-div
-    pt_vec   = pt - line_start
+    if n < 2:
+        return waypoints
     
-    # Cross product in 2D => (x1*y2 - y1*x2) in absolute value
-    cross_val = abs(line_vec[0]*pt_vec[1] - line_vec[1]*pt_vec[0])
-    return cross_val / line_len
+    # Interpolate between consecutive points
+    for i in range(n - 1):
+        start = np.array(waypoints[i])
+        end = np.array(waypoints[i + 1])
+        distance = np.linalg.norm(end - start)
+        if distance == 0:
+            continue
+        direction = (end - start) / distance
+        num_steps = int(distance // step_distance) + 1
 
-def predictive_gradient_greatest_deviation(q, goal, obstacles,
-                                           k_att, k_rep, d0,
-                                           epsilon, prediction_horizon):
+        for step in range(num_steps):
+            interpolated_point = start + step * step_distance * direction
+            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
+            if rounded_point != previous_point:
+                interpolated_points.append(rounded_point)
+                previous_point = rounded_point
+
+    return interpolated_points
+
+# --- Predictive APF ---
+def predictive_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size, prediction_horizon):
     """
-    Predictive Gradient that picks as 'temp_goal' the point with the greatest
-    deviation from the straight line (q -> goal).
+    Predictive APF using step-by-step horizon updates.
+    """
+    predicted_path = [q.copy()]
     
-    Steps:
-    1) Compute a basic APF gradient at q.
-    2) Predict a short path forward in small steps (prediction_horizon).
-    3) Measure the perpendicular distance of each predicted point
-       from the line q->goal, pick the one with the largest distance.
-    4) The predictive_grad from q to that 'max deviation point' is returned
-       as the predictive gradient.
-    """
-    # --- 1) Basic APF gradient at q (finite differences + repulsive) ---
+    # Compute APF force at current position
     grad = np.zeros_like(q)
     base_pot = total_potential(q, goal, obstacles, k_att, k_rep, d0)
+    
     for i in range(len(q)):
         q_step = q.copy()
         q_step[i] += epsilon
         pot_diff = total_potential(q_step, goal, obstacles, k_att, k_rep, d0) - base_pot
         grad[i] = pot_diff / epsilon
-    grad = -grad  # negative => descend potential
     
-    # Add repulsive gradient
+    grad = -grad  # Move in descending potential
     _, rep_grad = repulsive_potential(q, obstacles, k_rep, d0)
-    grad += rep_grad
-
-    # --- 2) Predict short path in small steps along 'grad' ---
-    predicted_points = []
-    q_sim = q.copy()
+    grad += rep_grad  # Add repulsive influence
+    
+    # Normalize and apply step size
+    grad_norm = np.linalg.norm(grad)
+    if grad_norm > 0:
+        grad = (grad / grad_norm) * step_size
+    
+    # Update position and store in predicted path
     for _ in range(prediction_horizon):
-        predicted_points.append(q_sim.copy())
-        q_sim += epsilon * grad  # small step along gradient
+        q = q + grad
+        predicted_path.append(q.copy())
 
-    if len(predicted_points) == 0:
-        # fallback: just use grad
-        return grad / (np.linalg.norm(grad) + 1e-9)
-
-    # --- 3) Pick the predicted point with greatest deviation from line (q->goal) ---
-    max_dist = -1.0
-    max_idx = 0
-    for i, p in enumerate(predicted_points):
-        dist = distance_from_line(p, q, goal)
-        if dist > max_dist:
-            max_dist = dist
-            max_idx = i
-
-    temp_goal = predicted_points[max_idx]
-
-    # --- 4) Return predictive_grad from q to that 'temp_goal' ---
-    predictive_grad = temp_goal - q
-    norm_dir = np.linalg.norm(predictive_grad)
-    if norm_dir > 1e-9:
-        predictive_grad /= norm_dir
-    else:
-        # fallback: use original grad
-        g_norm = np.linalg.norm(grad)
-        predictive_grad = grad / (g_norm + 1e-9)
-
-    # If predictive_grad is very small => add random perturbation
-    if np.linalg.norm(predictive_grad) < 1e-3:
+    # If predictive_path is very small => add random perturbation
+    if np.linalg.norm(predicted_path) < 1e-3:
         small_value = 0.2
         noise = np.array([random.uniform(-small_value, small_value),
                           random.uniform(-small_value, small_value)])
-        predictive_grad += noise
-        predictive_grad /= (np.linalg.norm(predictive_grad) + 1e-9)
+        predicted_path += noise
+        predicted_path /= (np.linalg.norm(predicted_path) + 1e-9)
 
-    return predictive_grad
+    return predicted_path
 
-def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=50.0, max_iters=5000):
+def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=80.0, max_iters=5000):
+    """
+    APF path planning using predictive APF for smooth navigation.
+    """
     global epsilon, step_size, prediction_horizon
-
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
     goal = np.array(goal, dtype=np.float64).flatten()
     obstacles = np.array(obstacles, dtype=np.float64) if obstacles else np.empty((0, 2))
-    potential_values = []
-
+    
     for _ in range(max_iters):
-        # Ensure q is valid before calling gradient()
-        if not isinstance(q, np.ndarray) or q.shape != (2,):
-            print(f"Error: Invalid q value {q}. Expected 2D array.")
-            return [], []
-
-        grad =  predictive_gradient_greatest_deviation(q, goal, obstacles, k_att, k_rep, d0, epsilon, prediction_horizon)
-
-        # Normalize gradient to prevent large jumps
-        grad_norm = np.linalg.norm(grad)
-        if grad_norm > 0:
-            grad = (grad / grad_norm) * step_size
-
-        # Update position
-        q += step_size * grad  # Move based on gradient
+        predicted_path = predictive_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size, prediction_horizon)
+        
+        # Choose the best predicted point (here: last one for smoothing)
+        q = predicted_path[-1]
         path.append(q.copy())
-        potential_values.append(total_potential(q, goal, obstacles, k_att, k_rep, d0))
         
         # Check if goal is reached
-        if np.linalg.norm(q - goal) < 0.1:  # Goal reached threshold
+        if np.linalg.norm(q - goal) < 0.1:
             break
-
-    # Convert path to a clean (N, 2) NumPy array
+    
     path = np.array(path, dtype=np.float64).reshape(-1, 2)
-
-    # Ensure path has enough points before smoothing
+    
+    # Smooth the path
     if path.shape[0] > 1:
         path[:, 0] = gaussian_filter1d(path[:, 0], sigma=2)
         path[:, 1] = gaussian_filter1d(path[:, 1], sigma=2)
+    
+    path = interpolate_waypoints(path, step_distance=1.0)
 
-    return path, potential_values
+    return path
+

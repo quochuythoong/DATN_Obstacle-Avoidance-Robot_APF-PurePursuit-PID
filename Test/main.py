@@ -101,7 +101,7 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     global global_path
     
     # Perform path planning
-    path, potential_values = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
+    path = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
     
     # Save the path for plotting directly on the frame (hold on)
     global_path = path
