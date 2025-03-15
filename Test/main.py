@@ -2,28 +2,35 @@
 import cv2
 import aruco_obstacle_detection as detection
 # from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
-from apf_1st_implement import apf_path_planning
+from apf_1st_implement import interpolate_waypoints, apf_path_planning
+from Predictive_APF import predictive_path 
 from utils import frame_height
 # from client_control import send_params
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt 
 
 # Global variables
-detection_active = False  # Flag to enable detection
-coordinates_ready = False  # Flag to show RUN button
+detection_active = False     # Flag to enable detection
+coordinates_ready = False    # Flag to show RUN button
+predictive_APF_enable = True # Flag to enable Predictive APF
 aruco_coordinates = None
 obstacle_coordinates = None
 goal_set_points = None
 run_robot = False
 global_path = None
+deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
 
 # Button positions
-START_BUTTON_POS = (10, 10, 150, 60)  # Green Start button
-RESET_BUTTON_POS = (170, 10, 310, 60)  # Red Reset button
-CLEAR_BUTTON_POS = (170, 70, 310, 120)  # Blue Clear button
-RUN_BUTTON_POS = (10, 70, 150, 120)  # Yellow Run button (Initially hidden)
+START_BUTTON_POS = (5, 5, 65, 25)      # Green Start button
+RESET_BUTTON_POS = (75, 5, 135, 25)    # Red Reset button
+CLEAR_BUTTON_POS = (75, 30, 135, 55)   # Blue Clear button
+RUN_BUTTON_POS = (5, 30, 65, 55)       # Yellow Run button (Initially hidden)
+APF_PAPF_BUTTON_POS = (5, 65, 135, 85) # Green/Red APF_PAPF button (toggle APF_PAPF flag)
+# Position text directly below APF_PAPF button
+flag_text_x = APF_PAPF_BUTTON_POS[0]       # Align with the left side of the button
+flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, run_robot, global_path
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, run_robot, global_path, predictive_APF_enable
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -53,34 +60,57 @@ def mouse_callback(event, x, y, flags, param):
             print("RUN")
             run_robot = True
 
+        # Toggle button (flag_predictive_APF) to enable / disable Predictive_APF
+        elif APF_PAPF_BUTTON_POS[0] <= x <= APF_PAPF_BUTTON_POS[2] and APF_PAPF_BUTTON_POS[1] <= y <= APF_PAPF_BUTTON_POS[3]:
+            predictive_APF_enable = not predictive_APF_enable  # Toggle predictive_APF_enable
+
         # Set goal point
         else:
             goal_set_points = [x, frame_height - y]
             print("Selected point:", goal_set_points)
 
+def draw_text_centered(frame, text, rect, font_scale, thickness=1, color=(255, 255, 255)):
+    """ Draw text centered within a rectangle """
+    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+    text_x = rect[0] + (rect[2] - rect[0] - text_size[0]) // 2
+    text_y = rect[1] + (rect[3] - rect[1] + text_size[1]) // 2
+    cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+
 def draw_overlay(frame):
-    """ Draw buttons and information overlay """
-    # Draw Start button (Green)
+    """ Draw buttons and overlay with centered text """
+    font_scale = 0.5
+
+    # Start Button (Green)
     cv2.rectangle(frame, START_BUTTON_POS[:2], START_BUTTON_POS[2:], (0, 255, 0), -1)
-    cv2.putText(frame, "START", (START_BUTTON_POS[0] + 10, START_BUTTON_POS[1] + 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
-    
-    # Draw Reset button (Red)
+    draw_text_centered(frame, "START", START_BUTTON_POS, font_scale, color=(0, 0, 0))
+
+    # Reset Button (Red)
     cv2.rectangle(frame, RESET_BUTTON_POS[:2], RESET_BUTTON_POS[2:], (0, 0, 255), -1)
-    cv2.putText(frame, "RESET", (RESET_BUTTON_POS[0] + 10, RESET_BUTTON_POS[1] + 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    
-    # Draw Clear button (Blue)
+    draw_text_centered(frame, "RESET", RESET_BUTTON_POS, font_scale, color=(255, 255, 255))
+
+    # Clear Button (Blue)
     cv2.rectangle(frame, CLEAR_BUTTON_POS[:2], CLEAR_BUTTON_POS[2:], (255, 0, 0), -1)
-    cv2.putText(frame, "CLEAR", (CLEAR_BUTTON_POS[0] + 10, CLEAR_BUTTON_POS[1] + 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    
-    # Draw Run button (Yellow) only if coordinates are ready
+    draw_text_centered(frame, "CLEAR", CLEAR_BUTTON_POS, font_scale, color=(255, 255, 255))
+
+    # Run Button (Yellow) (Only if coordinates are ready)
     if coordinates_ready:
         cv2.rectangle(frame, RUN_BUTTON_POS[:2], RUN_BUTTON_POS[2:], (0, 255, 255), -1)
-        cv2.putText(frame, "RUN", (RUN_BUTTON_POS[0] + 10, RUN_BUTTON_POS[1] + 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
-    
+        draw_text_centered(frame, "RUN", RUN_BUTTON_POS, font_scale, color=(0, 0, 0))
+
+    # APF-PAPF Toggle Button
+    if predictive_APF_enable:
+        button_color = (0, 200, 100)  # Green for PAPF   
+    else: 
+        button_color = (200, 50, 50)  # Red for APF
+    cv2.rectangle(frame, APF_PAPF_BUTTON_POS[:2], APF_PAPF_BUTTON_POS[2:], button_color, -1)
+    draw_text_centered(frame, "APF-PAPF", APF_PAPF_BUTTON_POS, font_scale, color=(255, 255, 255))
+
+    # Display Flag Status (Top-Right Corner)
+    flag_status = "PAPF Enabled" if predictive_APF_enable else "APF Enabled"
+    cv2.putText(frame, flag_status, 
+                (flag_text_x, flag_text_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0) if predictive_APF_enable else (0, 0, 255), 2)
+
     # Draw the set points as red dots
     if goal_set_points:
         cv2.circle(frame, (goal_set_points[0], frame_height - goal_set_points[1]), 5, (0, 0, 255), -1)
@@ -98,16 +128,25 @@ def draw_overlay(frame):
 
 # ''' --------------------------------- PLOTTING MATPLOTLIB FIGURES ---------------------------------
 def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame):
-    global global_path
+    global predictive_APF_enable, global_path, deviation_threshold
     
-    # Perform path planning
-    path = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
+    # Perform path planning (Basic APF)
+    original_path = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
     
-    # Save the path for plotting directly on the frame (hold on)
-    global_path = path
+    # Perform Advanced path planning (Predictive APF)
+    if predictive_APF_enable:
+        # Plan the Predictive Path
+        pred_path = predictive_path(original_path, deviation_threshold)
+        pred_path_final = interpolate_waypoints(pred_path)
+
+        # Save the path for plotting directly on the frame (hold on)
+        global_path = pred_path_final
+    elif not predictive_APF_enable:
+        # Save the path for plotting directly on the frame (hold on)
+        global_path = original_path
 
     # Plot the path directly on the frame for saving as an image
-    for point in path:
+    for point in global_path:
         x_path, y_path = int(point[0]), int(frame_height - point[1]) # Convert to integers
         cv2.circle(frame, (x_path, y_path), 3, (0, 0, 255), -1)  # Red color
 

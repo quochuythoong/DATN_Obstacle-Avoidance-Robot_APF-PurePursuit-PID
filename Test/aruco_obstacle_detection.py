@@ -5,7 +5,9 @@ import cv2.aruco as aruco
 import matplotlib.pyplot as plt
 from utils import frame_height
 
+# Global variables
 output_filename = "Processed_image.jpg"
+step_distance = 1.0
 
 def initialize_camera():
     """ Initializes and returns the camera object """
@@ -25,7 +27,7 @@ def process_frame(cap):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return frame, gray
 
-def interpolate_waypoints(waypoints, step_distance=1.0):
+def interpolate_waypoints(waypoints, step_distance):
     interpolated_points = []
     previous_point = None
     n = len(waypoints)
@@ -86,8 +88,58 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
 #             file.write(f"  {obstacle},\n")
 #         file.write("]\n")
 
+def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
+    """
+    Fits an ellipse to the given points and returns a list of points along the ellipse boundary.
+    
+    Parameters:
+      points (array-like): A list or array of (x, y) points representing a contour.
+      expansion_factor (float): Factor to scale the fitted ellipse's axes (1.0 = no expansion).
+      num_points (int): Number of boundary points to generate along the ellipse.
+    
+    Returns:
+      list: A list of (x, y) tuples along the ellipse boundary.
+    """
+    global step_distance
+
+    # Convert input to a NumPy array of type float32
+    pts = np.array(points, dtype=np.float32)
+    
+    # If there are not enough points to fit an ellipse, return the original points
+    if pts.shape[0] < 5:
+        return [tuple(p) for p in pts]
+    
+    # Reshape to the format required by cv2.fitEllipse: (N, 1, 2)
+    pts_reshaped = pts.reshape((-1, 1, 2))
+    
+    # Fit an ellipse using OpenCV
+    ellipse = cv2.fitEllipse(pts_reshaped)
+    center, axes, angle = ellipse  # center=(cx,cy), axes=(width, height), angle in degrees
+    
+    # Expand the axes by the expansion_factor
+    a = (axes[0] * expansion_factor) / 2.0  # semi-major axis
+    b = (axes[1] * expansion_factor) / 2.0  # semi-minor axis
+    theta = np.deg2rad(angle)  # convert angle to radians
+    
+    # Generate points along the ellipse using the parametric equation\n    # x = a*cos(t), y = b*sin(t)\n    t in [0, 2*pi]\n    t = np.linspace(0, 2*pi, num_points)
+    t = np.linspace(0, 2 * np.pi, num_points)
+    x = a * np.cos(t)
+    y = b * np.sin(t)
+    
+    # Rotate the ellipse points by theta using a rotation matrix
+    R = np.array([[np.cos(theta), -np.sin(theta)],
+                  [np.sin(theta),  np.cos(theta)]])
+    ellipse_points = np.dot(R, np.vstack((x, y))).T + center
+    
+    # Interpolate along the ellipse boundary
+    interp_ellipse = interpolate_waypoints(ellipse_points, step_distance)
+    
+    # Return as a list of interpolated (x, y) tuples
+    return interp_ellipse
+
 def detect_aruco_and_obstacles(frame, gray):
     """ Detects ArUco markers and obstacles in the frame """
+    global step_distance
     aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
     parameters = aruco.DetectorParameters()
     corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
@@ -143,22 +195,31 @@ def detect_aruco_and_obstacles(frame, gray):
         coords = cnt.reshape(-1, 2).tolist()
         
         # Interpolate along the contour's points using the provided function
-        interp_points = interpolate_waypoints(coords, step_distance=1.0)
+        contour_interp_points = interpolate_waypoints(coords, step_distance=1.0) # OpenCV axis (with downward y)
         
         # Invert y-coordinates of detected obstacles
-        inverted_interp_points = [(x, frame_height - y) for x, y in interp_points]
+        inverted_interp_points = [(x, frame_height - y) for x, y in contour_interp_points] # Upward y axis
+
+        # Ellipse bounding of detected obstacles
+        ellipse_bounded_obstacles_show = ellipse_bounding(contour_interp_points)
+        ellipse_bounded_obstacles_calculate = [(x, frame_height - y) for x, y in ellipse_bounded_obstacles_show]
 
         # Append only the current contour's points
-        obstacle_coordinates = obstacle_coordinates + inverted_interp_points
+        obstacle_coordinates = obstacle_coordinates + ellipse_bounded_obstacles_calculate
         
         # Plot the interpolated points on the edge detection image
-        interp_points_array = np.array(interp_points)
+        interp_points_array = np.array(contour_interp_points)
         plt.scatter(interp_points_array[:, 0], interp_points_array[:, 1],
-                    s=5, label=f"Contour {idx} interp")
+                    s=5, color='blue', label=f"Contour {idx} interp")
+        
+        # Plot the interpolated points of the ellipse bounding
+        interp_points_ellipse = np.array(ellipse_bounded_obstacles_show)
+        plt.scatter(interp_points_ellipse[:, 0], interp_points_ellipse[:, 1],
+                    s=5, color='red', label=f"Contour {idx} ellipse")
 
     # Display the Matplotlib figure
-    plt.title("Edge Detection with Interpolated Coordinates (ArUco Ignored)")
-    plt.legend()
+    plt.title("Edge Detection with Interpolated Coordinates & Ellipse (ArUco Ignored)")
+    # plt.legend()
     plt.axis("off")
     plt.savefig(output_filename, bbox_inches='tight', pad_inches=0)
 

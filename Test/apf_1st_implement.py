@@ -14,6 +14,39 @@ epsilon           = 1e-3   # Small step used in gradient/prediction
 # k_rep           = repulsive potential constant
 # d0              = repulsive potential range
 
+###############################################################################
+# ADD-ON FUNCTIONS
+###############################################################################
+def interpolate_waypoints(waypoints, step_distance=1.0):
+    interpolated_points = []
+    previous_point = None
+    n = len(waypoints)
+
+    if n < 2:
+        return waypoints
+    
+    # Interpolate between consecutive points
+    for i in range(n - 1):
+        start = np.array(waypoints[i])
+        end = np.array(waypoints[i + 1])
+        distance = np.linalg.norm(end - start)
+        if distance == 0:
+            continue
+        direction = (end - start) / distance
+        num_steps = int(distance // step_distance) + 1
+
+        for step in range(num_steps):
+            interpolated_point = start + step * step_distance * direction
+            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
+            if rounded_point != previous_point:
+                interpolated_points.append(rounded_point)
+                previous_point = rounded_point
+
+    return interpolated_points
+
+###############################################################################
+# CALCULATE POTENTIAL FIELD
+###############################################################################
 def attractive_potential(q, goal, k_att):
     return 0.5 * k_att * np.linalg.norm(q - goal) ** 2
 
@@ -48,34 +81,9 @@ def total_potential(q, goal, obstacles, k_att, k_rep, d0):
     U_rep, _, _ = repulsive_potential(q, obstacles, k_rep, d0)  # Ignore gradient
     return U_att + U_rep
 
-def interpolate_waypoints(waypoints, step_distance=1.0):
-    interpolated_points = []
-    previous_point = None
-    n = len(waypoints)
-
-    if n < 2:
-        return waypoints
-    
-    # Interpolate between consecutive points
-    for i in range(n - 1):
-        start = np.array(waypoints[i])
-        end = np.array(waypoints[i + 1])
-        distance = np.linalg.norm(end - start)
-        if distance == 0:
-            continue
-        direction = (end - start) / distance
-        num_steps = int(distance // step_distance) + 1
-
-        for step in range(num_steps):
-            interpolated_point = start + step * step_distance * direction
-            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
-            if rounded_point != previous_point:
-                interpolated_points.append(rounded_point)
-                previous_point = rounded_point
-
-    return interpolated_points
-
-# --- Basic APF ---
+###############################################################################
+# BASIC ARTIFICIAL POTENTIAL FIELD (APF) GRADIENT & LOWER-FIELD ORIENTATION SLIP CHOICES
+###############################################################################
 def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
     gradient = 0
     _, rep_grad_left, rep_grad_right = repulsive_potential(q, obstacles, k_rep, d0) # rep_grad = Repulsive gradient (The predictive_grad of the force at a specific point)
@@ -124,7 +132,10 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 
     return gradient
 
-def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=50.0, max_iters=5000):
+###############################################################################
+# APF PATH PLANNING
+###############################################################################
+def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=60.0, max_iters=5000):
     global epsilon, step_size
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
@@ -153,4 +164,3 @@ def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=5
     path = interpolate_waypoints(path, step_distance=1.0)
 
     return path
-
