@@ -9,7 +9,8 @@ from utils import LookAHead_dist_RealLife, Wheels_dist, ConstVelocity, frame_hei
 # Shared variables
 flag_end_waypoint = False
 distance_current = 0
-global center_coordinate
+global center_coordinate, end_point_arrow
+latest_waypoint = ()
 PWM1 = 0
 PWM2 = 0
 
@@ -97,7 +98,7 @@ def find_closest_point(current_position, waypoints, look_ahead_distance, error_t
     return closest_point, tempList
 
 def pure_pursuit_main(corners, global_path, frame):
-    global flag_end_waypoint, distance_current, PWM1, PWM2, center_coordinate
+    global flag_end_waypoint, distance_current, PWM1, PWM2, center_coordinate, latest_waypoint, end_point_arrow
     
     # Draw center and orientation of the robot
     if corners:

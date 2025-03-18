@@ -19,6 +19,7 @@ path_planning_enable = False # Flag to plan path
 run_robot = False            # Flag to run the robot
 pure_pursuit_enable = False  # Flag to enable Pure Pursuit
 global_path = None           # Global path for plotting
+global_path_plot = None      # Global path for plotting (hold on)
 deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
 
 # ArUco setup
@@ -38,7 +39,7 @@ flag_text_x = APF_PAPF_BUTTON_POS[0]       # Align with the left side of the but
 flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, predictive_APF_enable, run_robot, pure_pursuit_enable
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -55,6 +56,7 @@ def mouse_callback(event, x, y, flags, param):
             run_robot = False
             goal_set_points = None
             global_path = None
+            global_path_plot = None
             pure_pursuit_enable = False
             disable_pure_pursuit()
             send_params(0, 0)  # Stop the robot
@@ -148,7 +150,7 @@ def draw_overlay(frame):
 
 # ''' --------------------------------- PLOTTING MATPLOTLIB FIGURES ---------------------------------
 def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame):
-    global predictive_APF_enable, global_path, deviation_threshold
+    global predictive_APF_enable, global_path, deviation_threshold, global_path_plot
     
     # Perform path planning (Basic APF)
     original_path = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
@@ -166,6 +168,8 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     elif not predictive_APF_enable:
         # Save the path for plotting directly on the frame (hold on)
         global_path = original_path
+
+    global_path_plot = global_path
 
     # Plot the path directly on the frame for saving as an image
     for point in global_path:
@@ -214,8 +218,6 @@ def main():
     cap = detection.initialize_camera()
     cv2.namedWindow("Unified View", cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("Unified View", mouse_callback)
-    
-    global_path_plot = global_path
 
     while True: # Loop until 'Reset' or 'q' is pressed
         frame, gray = detection.process_frame(cap)
