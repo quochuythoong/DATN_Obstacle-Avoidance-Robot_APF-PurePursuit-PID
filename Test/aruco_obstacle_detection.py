@@ -177,7 +177,7 @@ def detect_aruco_and_obstacles(frame, gray):
             pts = marker.reshape((-1, 1, 2)).astype(np.int32)
             cv2.fillPoly(mask, [pts], 255)
         # Dilate the mask to extend the filled region (e.g., by 10 pixels)
-        kernel = np.ones((10, 10), np.uint8)
+        kernel = np.ones((30, 30), np.uint8)
         dilated_mask = cv2.dilate(mask, kernel, iterations=1)
         # Set the dilated region in the edges image to black
         edges[dilated_mask == 255] = 0

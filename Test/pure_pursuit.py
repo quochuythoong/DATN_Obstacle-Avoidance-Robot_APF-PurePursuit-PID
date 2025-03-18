@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import apf_1st_implement as apf
-from client_control import send_params
+# from client_control import send_params
 from utils import LookAHead_dist_RealLife, Wheels_dist, ConstVelocity
 
 # Shared variables

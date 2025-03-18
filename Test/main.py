@@ -5,12 +5,12 @@ import aruco_obstacle_detection as detection
 from apf_1st_implement import interpolate_waypoints, apf_path_planning
 from Predictive_APF import predictive_path 
 from utils import frame_height
-# from client_control import send_params
+from client_control import send_params
 import matplotlib.pyplot as plt 
 
 # Global variables
 detection_active = False     # Flag to enable detection
-coordinates_ready = False    # Flag to show RUN button
+coordinates_ready = False    # Flag to show PLAN_PATH button
 predictive_APF_enable = True # Flag to enable Predictive APF
 aruco_coordinates = None
 obstacle_coordinates = None
@@ -23,7 +23,7 @@ deviation_threshold = 40     # minimum deviation (perpendicular distance) requir
 START_BUTTON_POS = (5, 5, 65, 25)      # Green Start button
 RESET_BUTTON_POS = (75, 5, 135, 25)    # Red Reset button
 CLEAR_BUTTON_POS = (75, 30, 135, 55)   # Blue Clear button
-RUN_BUTTON_POS = (5, 30, 65, 55)       # Yellow Run button (Initially hidden)
+PLAN_PATH_BUTTON_POS = (5, 30, 65, 55)       # Yellow PLAN_PATH button (Initially hidden)
 APF_PAPF_BUTTON_POS = (5, 65, 135, 85) # Green/Red APF_PAPF button (toggle APF_PAPF flag)
 # Position text directly below APF_PAPF button
 flag_text_x = APF_PAPF_BUTTON_POS[0]       # Align with the left side of the button
@@ -55,9 +55,9 @@ def mouse_callback(event, x, y, flags, param):
             goal_set_points.clear()
             print("Cleared all selections.")
 
-        # Run button (Does nothing for now)
-        elif coordinates_ready and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
-            print("RUN")
+        # PLAN_PATH button (Does nothing for now)
+        elif coordinates_ready and PLAN_PATH_BUTTON_POS[0] <= x <= PLAN_PATH_BUTTON_POS[2] and PLAN_PATH_BUTTON_POS[1] <= y <= PLAN_PATH_BUTTON_POS[3]:
+            print("Planning path...")
             run_robot = True
 
         # Toggle button (flag_predictive_APF) to enable / disable Predictive_APF
@@ -92,10 +92,10 @@ def draw_overlay(frame):
     cv2.rectangle(frame, CLEAR_BUTTON_POS[:2], CLEAR_BUTTON_POS[2:], (255, 0, 0), -1)
     draw_text_centered(frame, "CLEAR", CLEAR_BUTTON_POS, font_scale, color=(255, 255, 255))
 
-    # Run Button (Yellow) (Only if coordinates are ready)
+    # PLAN_PATH Button (Yellow) (Only if coordinates are ready)
     if coordinates_ready:
-        cv2.rectangle(frame, RUN_BUTTON_POS[:2], RUN_BUTTON_POS[2:], (0, 255, 255), -1)
-        draw_text_centered(frame, "RUN", RUN_BUTTON_POS, font_scale, color=(0, 0, 0))
+        cv2.rectangle(frame, PLAN_PATH_BUTTON_POS[:2], PLAN_PATH_BUTTON_POS[2:], (0, 255, 255), -1)
+        draw_text_centered(frame, "PLAN", PLAN_PATH_BUTTON_POS, font_scale, color=(0, 0, 0))
 
     # APF-PAPF Toggle Button
     if predictive_APF_enable:
@@ -120,7 +120,7 @@ def draw_overlay(frame):
     if global_path is not None:
         for point in global_path:
             x_global_path, y__global_path = int(point[0]), int(frame_height - point[1])
-            cv2.circle(frame, (x_global_path, y__global_path), 3, (0, 0, 255), -1)  # Red color
+            cv2.circle(frame, (x_global_path, y__global_path), 1, (0, 0, 255), -1)  # Red color
     else:
         global_path = []  # Reset the path
     
@@ -148,7 +148,7 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     # Plot the path directly on the frame for saving as an image
     for point in global_path:
         x_path, y_path = int(point[0]), int(frame_height - point[1]) # Convert to integers
-        cv2.circle(frame, (x_path, y_path), 3, (0, 0, 255), -1)  # Red color
+        cv2.circle(frame, (x_path, y_path), 2, (0, 0, 255), -1)  # Red color
 
     # Save the final frame with the plotted path as a JPG image
     output_frame_filename = "final_path.jpg"
