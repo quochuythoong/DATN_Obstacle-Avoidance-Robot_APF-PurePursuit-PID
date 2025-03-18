@@ -1,11 +1,17 @@
 import math
 import numpy as np
-import apf_1st_implement as apf
-# from client_control import send_params
-from utils import LookAHead_dist_RealLife, Wheels_dist, ConstVelocity
+import math
+import cv2
+import aruco_obstacle_detection as detection
+from client_control import send_params
+from utils import LookAHead_dist_RealLife, Wheels_dist, ConstVelocity, frame_height, frame_width, LookAHead_dist
 
 # Shared variables
 flag_end_waypoint = False
+distance_current = 0
+global center_coordinate
+PWM1 = 0
+PWM2 = 0
 
 def disable_pure_pursuit():
     global flag_end_waypoint
@@ -88,27 +94,56 @@ def find_closest_point(current_position, waypoints, look_ahead_distance, error_t
     if closest_index >= 0:
         tempList = tempList[closest_index:]
 
-    return closest_point
+    return closest_point, tempList
 
-def pure_pursuit_main(aruco_coordinates, obstacle_coordinates, goal_set_points, end_point_arrow):
-    path, potential_value = apf.apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
-    closest_point = find_closest_point(aruco_coordinates, path, LookAHead_dist_RealLife)
+def pure_pursuit_main(corners, global_path, frame):
+    global flag_end_waypoint, distance_current, PWM1, PWM2, center_coordinate
     
-    # Calculate the wheel velocities
-    if closest_point:
-        latest_waypoint = closest_point
-        projection, signed_distance = calculate_signed_AH_and_projection(aruco_coordinates, end_point_arrow, latest_waypoint)   
-        omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_RealLife)
-        R = ConstVelocity / omega if omega != 0 else float('inf')
-        v1, v2 = calculate_wheel_velocities(omega, R, Wheels_dist)
-        PWM1, PWM2 = velocities_to_RPM(v1, v2)
-        # print("PWM Left Wheel:", PWM1)
-        # print("PWM Right Wheel:", PWM2)
+    # Draw center and orientation of the robot
+    if corners:
+        center_coordinate, end_point_arrow, angle = detection.draw_center_and_orientation(frame, corners, frame_height, frame_width)
+    
+    # Pure Pursuit approaching the last waypoints
+    if len(global_path) <= 10:
+        distance_current = math.sqrt((latest_waypoint[0] - center_coordinate[0])**2 + (latest_waypoint[1] - center_coordinate[1])**2)
+        if distance_current <= 15: # Last detected waypoints
+            flag_end_waypoint = True
+        else:
+            projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+            # Calculate omega and wheel velocities
+            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_RealLife)
+            R = ConstVelocity / omega if omega != 0 else float('inf')
+            v1, v2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+            PWM1, PWM2 = velocities_to_RPM(v1, v2)
+            # print("PWM Left Wheel:", PWM1)
+            # print("PWM Right Wheel:", PWM2)
 
-    # Approaches the final point, stop the robot
+    # Continuous Pure Pursuit
+    if global_path:
+        closest_point, global_path = find_closest_point(center_coordinate, global_path, LookAHead_dist)
+        if closest_point:
+            latest_waypoint = closest_point
+            cv2.line(frame, 
+                (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
+                (int(closest_point[0]), int(-(closest_point[1]-frame_height))), 
+                (0, 255, 255), 2)
+            #print("Closest point:", closest_point)
+            projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+            # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
+            # Calculate omega and wheel velocities
+            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_RealLife)
+            R = ConstVelocity / omega if omega != 0 else float('inf')
+            v1, v2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+            PWM1, PWM2 = velocities_to_RPM(v1, v2)
+            # print("PWM Left Wheel:", PWM1)
+            # print("PWM Right Wheel:", PWM2)
+
+    # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
         PWM1 = 0
         PWM2 = 0
 
     # Send PWM1, PWM2 to client
-    # send_params(PWM1, PWM2)
+    send_params(PWM1, PWM2)
+
+    return global_path

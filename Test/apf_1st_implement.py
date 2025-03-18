@@ -135,7 +135,7 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 # APF PATH PLANNING
 ###############################################################################
-def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=90.0, max_iters=5000):
+def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=95.0, max_iters=5000):
     global epsilon, step_size
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()

@@ -230,5 +230,49 @@ def detect_aruco_and_obstacles(frame, gray):
 
     return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle
 
+###############################################################################
+# PURE PURSUIT ADD-ON FUNCTIONS
+###############################################################################
 
+def detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters):
+    corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+    return corners, ids
 
+def draw_center_and_orientation(frame, corners, frame_height, frame_width):
+    for i, corner in enumerate(corners):
+        points = corner[0]
+        
+        # Calculate the center coordinates
+        cx, cy = int(np.mean(points[:, 0])), frame_height - int(np.mean(points[:, 1]))
+        center_coordinate = (cx, cy)
+        
+        # Calculate the orientation angle
+        vec_x, vec_y = points[1][0] - points[0][0], points[0][1] - points[1][1]
+        angle = np.arctan2(vec_y, vec_x) * 180 / np.pi
+
+        # Draw the center and orientation arrow
+        cv2.circle(frame, (cx, frame_height - cy), 5, (0, 255, 0), -1)  # Green circle at the center
+        arrow_length = 50
+        end_x = int(cx + arrow_length * np.cos(angle * np.pi / 180))
+        end_y = int(cy + arrow_length * np.sin(angle * np.pi / 180))
+        end_point_arrow = (end_x, end_y)
+        cv2.arrowedLine(frame, (cx, frame_height - cy), (end_x, frame_height - end_y), (0, 255, 0), 2)  # Green arrow
+
+        # Display coordinates and angle in the top right corner
+        text_x_y = f"X: {cx}, Y: {cy}"
+        text_angle = f"Angle: {angle:.2f} deg"
+        
+        # Set positions for the text in the top right corner
+        top_right_x = frame_width - 200  # 200 pixels offset from the right edge
+        top_right_y = 30  # Offset from the top edge for the first line of text
+        line_spacing = 30  # Space between lines of text
+
+        # Display the X, Y coordinates
+        cv2.putText(frame, text_x_y, (top_right_x, top_right_y), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        # Display the Angle
+        cv2.putText(frame, text_angle, (top_right_x, top_right_y + line_spacing), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+    return center_coordinate, end_point_arrow, angle

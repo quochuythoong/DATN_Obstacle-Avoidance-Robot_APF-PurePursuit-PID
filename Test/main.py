@@ -1,7 +1,7 @@
 # main.py
 import cv2
 import aruco_obstacle_detection as detection
-# from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
+from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
 from apf_1st_implement import interpolate_waypoints, apf_path_planning
 from Predictive_APF import predictive_path 
 from utils import frame_height
@@ -12,31 +12,38 @@ import matplotlib.pyplot as plt
 detection_active = False     # Flag to enable detection
 coordinates_ready = False    # Flag to show PLAN_PATH button
 predictive_APF_enable = True # Flag to enable Predictive APF
-aruco_coordinates = None
-obstacle_coordinates = None
-goal_set_points = None
-run_robot = False
-global_path = None
+aruco_coordinates = None     # Detected ArUco marker coordinates
+obstacle_coordinates = None  # Detected obstacle coordinates
+goal_set_points = None       # Selected goal points
+path_planning_enable = False # Flag to plan path
+run_robot = False            # Flag to run the robot
+pure_pursuit_enable = False  # Flag to enable Pure Pursuit
+global_path = None           # Global path for plotting
 deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
+
+# ArUco setup
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
+parameters = cv2.aruco.DetectorParameters()  
 
 # Button positions
 START_BUTTON_POS = (5, 5, 65, 25)      # Green Start button
 RESET_BUTTON_POS = (75, 5, 135, 25)    # Red Reset button
 CLEAR_BUTTON_POS = (75, 30, 135, 55)   # Blue Clear button
-PLAN_PATH_BUTTON_POS = (5, 30, 65, 55)       # Yellow PLAN_PATH button (Initially hidden)
+PLAN_PATH_BUTTON_POS = (5, 30, 65, 55) # Yellow PLAN_PATH button (Initially hidden)
 APF_PAPF_BUTTON_POS = (5, 65, 135, 85) # Green/Red APF_PAPF button (toggle APF_PAPF flag)
+RUN_BUTTON_POS = (5, 90, 135, 110)     # Orange RUN button (appears after path planning)
+
 # Position text directly below APF_PAPF button
 flag_text_x = APF_PAPF_BUTTON_POS[0]       # Align with the left side of the button
 flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, run_robot, global_path, predictive_APF_enable
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, predictive_APF_enable, run_robot, pure_pursuit_enable
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
         if START_BUTTON_POS[0] <= x <= START_BUTTON_POS[2] and START_BUTTON_POS[1] <= y <= START_BUTTON_POS[3]:
             detection_active = True
-            # enable_pure_pursuit()
 
         # Reset all processes
         elif RESET_BUTTON_POS[0] <= x <= RESET_BUTTON_POS[2] and RESET_BUTTON_POS[1] <= y <= RESET_BUTTON_POS[3]:
@@ -44,11 +51,13 @@ def mouse_callback(event, x, y, flags, param):
             coordinates_ready = False
             aruco_coordinates = None
             obstacle_coordinates = None
+            path_planning_enable = False
             run_robot = False
             goal_set_points = None
             global_path = None
-            # disable_pure_pursuit()
-            # send_params(0, 0)  # Stop the robot
+            pure_pursuit_enable = False
+            disable_pure_pursuit()
+            send_params(0, 0)  # Stop the robot
 
         # Clear button
         elif CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]:
@@ -59,6 +68,12 @@ def mouse_callback(event, x, y, flags, param):
         elif coordinates_ready and PLAN_PATH_BUTTON_POS[0] <= x <= PLAN_PATH_BUTTON_POS[2] and PLAN_PATH_BUTTON_POS[1] <= y <= PLAN_PATH_BUTTON_POS[3]:
             print("Planning path...")
             run_robot = True
+            path_planning_enable = True
+
+        elif run_robot and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
+            print("Running the robot...")
+            pure_pursuit_enable = True
+            enable_pure_pursuit()
 
         # Toggle button (flag_predictive_APF) to enable / disable Predictive_APF
         elif APF_PAPF_BUTTON_POS[0] <= x <= APF_PAPF_BUTTON_POS[2] and APF_PAPF_BUTTON_POS[1] <= y <= APF_PAPF_BUTTON_POS[3]:
@@ -97,6 +112,11 @@ def draw_overlay(frame):
         cv2.rectangle(frame, PLAN_PATH_BUTTON_POS[:2], PLAN_PATH_BUTTON_POS[2:], (0, 255, 255), -1)
         draw_text_centered(frame, "PLAN", PLAN_PATH_BUTTON_POS, font_scale, color=(0, 0, 0))
 
+    # RUN Button (Orange) (Only if path_planning_enable = TRUE, Path planning is done)
+    if run_robot:
+        cv2.rectangle(frame, RUN_BUTTON_POS[:2], RUN_BUTTON_POS[2:], (0, 165, 255), -1)
+        draw_text_centered(frame, "RUN", RUN_BUTTON_POS, font_scale, color=(0, 0, 0))
+
     # APF-PAPF Toggle Button
     if predictive_APF_enable:
         button_color = (0, 200, 100)  # Green for PAPF   
@@ -116,13 +136,13 @@ def draw_overlay(frame):
         cv2.circle(frame, (goal_set_points[0], frame_height - goal_set_points[1]), 5, (0, 0, 255), -1)
 
     # Draw the stored path as red dots (hold  on)
-    global global_path
-    if global_path is not None:
-        for point in global_path:
+    global global_path_plot
+    if global_path_plot is not None:
+        for point in global_path_plot:
             x_global_path, y__global_path = int(point[0]), int(frame_height - point[1])
             cv2.circle(frame, (x_global_path, y__global_path), 1, (0, 0, 255), -1)  # Red color
     else:
-        global_path = []  # Reset the path
+        global_path_plot = []  # Reset the path
     
     return frame
 
@@ -132,7 +152,9 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     
     # Perform path planning (Basic APF)
     original_path = apf_path_planning(aruco_coordinates, goal_set_points, obstacle_coordinates)
-    
+    original_path.insert(0, aruco_coordinates)  # Insert the ArUco marker as the starting point
+    original_path = interpolate_waypoints(original_path)
+
     # Perform Advanced path planning (Predictive APF)
     if predictive_APF_enable:
         # Plan the Predictive Path
@@ -186,13 +208,15 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
 # --------------------------------- PLOTTING MATPLOTLIB FIGURES --------------------------------- ''' 
     
 def main():
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, run_robot
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, global_path_plot
     
     # Initialize camera and window
     cap = detection.initialize_camera()
     cv2.namedWindow("Unified View", cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("Unified View", mouse_callback)
     
+    global_path_plot = global_path
+
     while True: # Loop until 'Reset' or 'q' is pressed
         frame, gray = detection.process_frame(cap)
         if frame is None:
@@ -206,11 +230,16 @@ def main():
             coordinates_ready = True
             print("Aruco Coordinates:", aruco_coordinates)
         
-        # Perform Path Planning and Pure Pursuit
-        if coordinates_ready and run_robot:
+        # Perform Path Planning
+        if coordinates_ready and path_planning_enable:
         #   pure_pursuit_main(aruco_coordinates, obstacle_coordinates, goal_set_points, end_point_arrow)
             execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame)
-            run_robot = False
+            path_planning_enable = False
+
+        # Perform Pure Pursuit
+        if pure_pursuit_enable:
+            corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
+            global_path = pure_pursuit_main(corners, global_path, frame)
 
         # Draw buttons and overlay information (GUI)
         draw_overlay(frame)
@@ -220,8 +249,7 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
-    
-    # send_params(0, 0)  # Stop the robot
+
     detection.release_camera(cap)
     
 if __name__ == "__main__":
