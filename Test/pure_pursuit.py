@@ -1,19 +1,30 @@
+###############################################################################
+# LIBRARIES
+###############################################################################
 import math
 import numpy as np
 import math
 import cv2
 import aruco_obstacle_detection as detection
 from client_control import send_params
-from utils import LookAHead_dist_RealLife, Wheels_dist, ConstVelocity, frame_height, frame_width, LookAHead_dist
+from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale
 
-# Shared variables
+###############################################################################
+# GLOBAL VARIABLES
+###############################################################################
+global center_coordinate, end_point_arrow
 flag_end_waypoint = False
 distance_current = 0
-global center_coordinate, end_point_arrow
 latest_waypoint = ()
-PWM1 = 0
-PWM2 = 0
+Adaptive_LookAHead = 0
+Adaptive_LookAHead_RealLife = 0
+omega = 0
+w1 = 0
+w2 = 0
 
+###############################################################################
+# ENABLE / DISABLE PURE PURSUIT
+###############################################################################
 def disable_pure_pursuit():
     global flag_end_waypoint
     flag_end_waypoint = True
@@ -22,6 +33,9 @@ def enable_pure_pursuit():
     global flag_end_waypoint
     flag_end_waypoint = False
 
+###############################################################################
+# PURE PURSUIT CALCULATION
+###############################################################################
 def calculate_omega(AH, v, lt):
     omega = (2 * AH * v) / (lt ** 2)
     return omega
@@ -29,14 +43,11 @@ def calculate_omega(AH, v, lt):
 def calculate_wheel_velocities(omega, R, Ld):
     v1 = omega * (R + Ld)
     v2 = omega * (R - Ld)
-    return v1, v2
 
-def velocities_to_RPM(v1, v2):
-    rpm1 = (v1 * 60) / (2 * math.pi * 0.0215) # radius of wheels = 0.0215 meter
-    rpm2 = (v2 * 60) / (2 * math.pi * 0.0215)
-    PWM1 = (rpm1 / 250) * 255  # 250 max RPM of motor, 255 max PWM of ESP
-    PWM2 = (rpm2 / 250) * 255
-    return PWM1, PWM2
+    # v/wheel_radius (rad/s)
+    w1 = v1 / 0.0215 
+    w2 = v2 / 0.0215
+    return w1, w2
 
 def calculate_signed_AH_and_projection(A, B, C):
     A = np.array(A)
@@ -70,13 +81,6 @@ def find_closest_point(current_position, waypoints, look_ahead_distance, error_t
     if not current_position or len(current_position) != 2:
         return None
 
-    # # Convert waypoints into a NumPy array safely
-    # try:
-    #     waypoints = np.array(waypoints, dtype=np.float64)  # Convert safely
-    # except ValueError:
-    #     print("Error: Waypoints contain inconsistent shapes or types.")
-    #     return None
-
     closest_point = None
     min_distance_diff = float('inf')
     closest_index = -1
@@ -97,9 +101,34 @@ def find_closest_point(current_position, waypoints, look_ahead_distance, error_t
 
     return closest_point, tempList
 
+###############################################################################
+# ADAPTIVE LOOKAHEAD
+###############################################################################
+def adaptive_lookahead(w1, w2, omega):
+    global k1, k2, min_ld
+
+    # Robot velocity related to 2 wheels velocity
+    v_robot = wheel_scale * (w1 + w2)
+
+    # Tuned lookahead distance
+    if omega < 0: # Negative omega --> turn right
+        tuned_ld = (k1 * v_robot) - (k2 * omega) 
+    else: # Positive omega --> turn left
+        tuned_ld = (k1 * v_robot) + (k2 * omega)
+
+    ld = max(tuned_ld, min_ld)  # Ensure lookahead is not below min_ld
+    return ld
+
+###############################################################################
+# PURE PURSUIT MAIN EXECUTION
+###############################################################################
 def pure_pursuit_main(corners, global_path, frame):
-    global flag_end_waypoint, distance_current, PWM1, PWM2, center_coordinate, latest_waypoint, end_point_arrow
+    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, Adaptive_LookAHead
     
+    # Calculate Adaptive Lookahead
+    Adaptive_LookAHead = adaptive_lookahead(w1, w2, omega)
+    Adaptive_LookAHead_RealLife = Adaptive_LookAHead * 0.00102 # Convert pixel to meter in real life
+
     # Draw center and orientation of the robot
     if corners:
         center_coordinate, end_point_arrow, angle = detection.draw_center_and_orientation(frame, corners, frame_height, frame_width)
@@ -111,40 +140,35 @@ def pure_pursuit_main(corners, global_path, frame):
             flag_end_waypoint = True
         else:
             projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+
             # Calculate omega and wheel velocities
-            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_RealLife)
+            omega = calculate_omega(signed_distance, ConstVelocity, Adaptive_LookAHead_RealLife)
             R = ConstVelocity / omega if omega != 0 else float('inf')
-            v1, v2 = calculate_wheel_velocities(omega, R, Wheels_dist)
-            PWM1, PWM2 = velocities_to_RPM(v1, v2)
-            # print("PWM Left Wheel:", PWM1)
-            # print("PWM Right Wheel:", PWM2)
+            w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
 
     # Continuous Pure Pursuit
     if global_path:
-        closest_point, global_path = find_closest_point(center_coordinate, global_path, LookAHead_dist)
+        closest_point, global_path = find_closest_point(center_coordinate, global_path, Adaptive_LookAHead)
         if closest_point:
             latest_waypoint = closest_point
             cv2.line(frame, 
                 (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
                 (int(closest_point[0]), int(-(closest_point[1]-frame_height))), 
                 (0, 255, 255), 2)
-            #print("Closest point:", closest_point)
+
             projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
-            # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
+
             # Calculate omega and wheel velocities
-            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_RealLife)
+            omega = calculate_omega(signed_distance, ConstVelocity, Adaptive_LookAHead_RealLife)
             R = ConstVelocity / omega if omega != 0 else float('inf')
-            v1, v2 = calculate_wheel_velocities(omega, R, Wheels_dist)
-            PWM1, PWM2 = velocities_to_RPM(v1, v2)
-            # print("PWM Left Wheel:", PWM1)
-            # print("PWM Right Wheel:", PWM2)
+            w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
-        PWM1 = 0
-        PWM2 = 0
+        w1 = 0
+        w2 = 0
 
-    # Send PWM1, PWM2 to client
-    send_params(PWM1, PWM2)
+    # Send w1, w2 to client
+    send_params(w1, w2)
 
     return global_path

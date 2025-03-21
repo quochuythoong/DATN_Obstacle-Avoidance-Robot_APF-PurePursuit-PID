@@ -1,9 +1,11 @@
+###############################################################################
+# LIBRARIES
+###############################################################################
 import numpy as np
 
 ###############################################################################
 # PREDICTIVE APF
 ###############################################################################
-
 '''
 Overview of Predictive APF (PAPF):
 - PAPF will choose a temporary_goal (a point from the basic APF that has the greatest deviation from the start-goal line)

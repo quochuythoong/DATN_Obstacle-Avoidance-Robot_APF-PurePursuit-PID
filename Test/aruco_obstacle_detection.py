@@ -1,14 +1,21 @@
-# aruco_obstacle_detection.py
+###############################################################################
+# LIBRARIES
+###############################################################################
 import cv2
 import numpy as np
 import cv2.aruco as aruco
 import matplotlib.pyplot as plt
+import utils
 from utils import frame_height
 
-# Global variables
+###############################################################################
+# GLOBAL VARIABLES
+###############################################################################
 output_filename = "Processed_image.jpg"
-step_distance = 1.0
 
+###############################################################################
+# CAMERA FUNCTIONS
+###############################################################################
 def initialize_camera():
     """ Initializes and returns the camera object """
     cap = cv2.VideoCapture(0)
@@ -27,67 +34,9 @@ def process_frame(cap):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return frame, gray
 
-def interpolate_waypoints(waypoints, step_distance):
-    interpolated_points = []
-    previous_point = None
-    n = len(waypoints)
-
-    if n < 2:
-        return waypoints
-    
-    # Interpolate between consecutive points
-    for i in range(n - 1):
-        start = np.array(waypoints[i])
-        end = np.array(waypoints[i + 1])
-        distance = np.linalg.norm(end - start)
-        if distance == 0:
-            continue
-        direction = (end - start) / distance
-        num_steps = int(distance // step_distance) + 1
-
-        for step in range(num_steps):
-            interpolated_point = start + step * step_distance * direction
-            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
-            if rounded_point != previous_point:
-                interpolated_points.append(rounded_point)
-                previous_point = rounded_point
-
-    # Interpolate between the last point and the first point to close the contour
-    start = np.array(waypoints[-1])
-    end = np.array(waypoints[0])
-    distance = np.linalg.norm(end - start)
-    if distance != 0:
-        direction = (end - start) / distance
-        num_steps = int(distance // step_distance) + 1
-        for step in range(1, num_steps):  # start from 1 to avoid duplicating the last point
-            interpolated_point = start + step * step_distance * direction
-            rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
-            if rounded_point != previous_point:
-                interpolated_points.append(rounded_point)
-                previous_point = rounded_point
-
-    return interpolated_points
-
-# def save_coordinates_to_txt(file_name, aruco_coordinates, obstacle_coordinates):
-#     with open(file_name, "w") as file:
-#         file.write("Aruco Coordinates:\n")
-#         for aruco in aruco_coordinates:
-#             file.write(f"ID {aruco[0]}: (X: {aruco[1]}, Y: {aruco[2]})\n")
-
-#         file.write("\nObstacle Coordinates:\n")
-#         for i, obstacle in enumerate(obstacle_coordinates):
-#             file.write(f"Obstacle {i + 1}:\n")
-#             for point in obstacle:
-#                 file.write(f"({point[0]}, {point[1]}) ")
-#             file.write("\n")  # New line after each obstacle
-        
-#         # Write the full array of obstacle_coordinates in a readable format
-#         file.write("\nFull Obstacle Coordinates (Array of Arrays):\n")
-#         file.write("[\n")
-#         for obstacle in obstacle_coordinates:
-#             file.write(f"  {obstacle},\n")
-#         file.write("]\n")
-
+###############################################################################
+# ELLIPSE BOUNDING FOR OBSTACLES
+###############################################################################
 def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
     """
     Fits an ellipse to the given points and returns a list of points along the ellipse boundary.
@@ -100,7 +49,6 @@ def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
     Returns:
       list: A list of (x, y) tuples along the ellipse boundary.
     """
-    global step_distance
 
     # Convert input to a NumPy array of type float32
     pts = np.array(points, dtype=np.float32)
@@ -132,14 +80,16 @@ def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
     ellipse_points = np.dot(R, np.vstack((x, y))).T + center
     
     # Interpolate along the ellipse boundary
-    interp_ellipse = interpolate_waypoints(ellipse_points, step_distance)
+    interp_ellipse = utils.interpolate_waypoints_contour(ellipse_points)
     
     # Return as a list of interpolated (x, y) tuples
     return interp_ellipse
 
+###############################################################################
+# ARUCO & OBSTACLES DETECTION
+###############################################################################
 def detect_aruco_and_obstacles(frame, gray):
     """ Detects ArUco markers and obstacles in the frame """
-    global step_distance
     aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
     parameters = aruco.DetectorParameters()
     corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
@@ -195,7 +145,7 @@ def detect_aruco_and_obstacles(frame, gray):
         coords = cnt.reshape(-1, 2).tolist()
         
         # Interpolate along the contour's points using the provided function
-        contour_interp_points = interpolate_waypoints(coords, step_distance=1.0) # OpenCV axis (with downward y)
+        contour_interp_points = utils.interpolate_waypoints_contour(coords) # OpenCV axis (with downward y)
         
         # Invert y-coordinates of detected obstacles
         inverted_interp_points = [(x, frame_height - y) for x, y in contour_interp_points] # Upward y axis
@@ -228,12 +178,11 @@ def detect_aruco_and_obstacles(frame, gray):
     # Save detected coordinates to a .txt file
     # save_coordinates_to_txt("Processed_image_data.txt", aruco_coordinates, obstacle_coordinates)
 
-    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle
+    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse
 
 ###############################################################################
-# PURE PURSUIT ADD-ON FUNCTIONS
+# PURE PURSUIT ADD-ON FUNCTIONS (LIVE TRACKING)
 ###############################################################################
-
 def detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters):
     corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
     return corners, ids
