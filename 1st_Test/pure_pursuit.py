@@ -6,7 +6,7 @@ import numpy as np
 import math
 import cv2
 import aruco_obstacle_detection as detection
-from client_control import send_params
+from client_control import send_params, ena_PID
 from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale
 
 ###############################################################################
@@ -165,10 +165,11 @@ def pure_pursuit_main(corners, global_path, frame):
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
+        ena_PID(0)  # Disable PID
         w1 = 0
         w2 = 0
 
     # Send w1, w2 to client
-    send_params(w1, w2)
+    # send_params(w1, w2)
 
     return global_path

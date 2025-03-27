@@ -35,3 +35,15 @@ def send_PID(kp, ki, kd):
             print(f"Failed to send PID, status code:", response.status_code)
     except requests.exceptions.RequestException as e:
         pass
+
+# Enable/Disable PID
+def ena_PID(value_ON_OFF):
+    try:
+        # Include both parameters in the URL
+        response = requests.get(f"{esp32_ip}/?ena_PID={value_ON_OFF}")
+        if response.status_code == 200:
+            print(f"Sent ena_PID={value_ON_OFF} successfully")
+        else:
+            print(f"Failed to send ena_PID, status code:", response.status_code)
+    except requests.exceptions.RequestException as e:
+        pass

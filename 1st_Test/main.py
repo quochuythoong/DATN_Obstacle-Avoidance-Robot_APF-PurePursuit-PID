@@ -5,10 +5,10 @@ import cv2
 import aruco_obstacle_detection as detection
 import utils
 from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
-from apf_1st_implement import apf_path_planning
+from Basic_APF import apf_path_planning
 from Predictive_APF import predictive_path 
 from utils import frame_height, kp, ki, kd
-from client_control import send_params, send_PID
+from client_control import send_params, send_PID, ena_PID
 
 ###############################################################################
 # GLOBAL VARIABLES
@@ -71,7 +71,8 @@ def mouse_callback(event, x, y, flags, param):
             global_path_plot = None
             pure_pursuit_enable = False
             disable_pure_pursuit()
-            send_params(0, 0)  # Stop the robot
+            ena_PID(0)  # Disable PID
+            # send_params(0, 0)  # Stop the robot
 
         # Clear button
         elif CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]:
@@ -86,6 +87,7 @@ def mouse_callback(event, x, y, flags, param):
 
         elif run_robot and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
             print("Running the robot...")
+            ena_PID(1) # Enable PID
             pure_pursuit_enable = True
             enable_pure_pursuit()
 
@@ -145,7 +147,7 @@ def draw_overlay(frame):
     cv2.rectangle(frame, APF_PAPF_BUTTON_POS[:2], APF_PAPF_BUTTON_POS[2:], button_color, -1)
     draw_text_centered(frame, "APF-PAPF", APF_PAPF_BUTTON_POS, font_scale, color=(255, 255, 255))
 
-    # Display Flag Status (Top-Right Corner)
+    # Display Flag Status (APF-PAPF)
     flag_status = "PAPF Enabled" if predictive_APF_enable else "APF Enabled"
     cv2.putText(frame, flag_status, 
                 (flag_text_x, flag_text_y),
@@ -249,7 +251,7 @@ def main():
     cv2.setMouseCallback("Unified View", mouse_callback)
 
     # send_PID to robot
-    send_PID(kp, ki, kd)
+    # send_PID(kp, ki, kd)
 
     while True: # Loop until 'Reset' or 'q' is pressed
         frame, gray = detection.process_frame(cap)
@@ -266,7 +268,6 @@ def main():
         
         # Perform Path Planning
         if coordinates_ready and path_planning_enable:
-        #   pure_pursuit_main(aruco_coordinates, obstacle_coordinates, goal_set_points, end_point_arrow)
             execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame)
             path_planning_enable = False
 
@@ -287,7 +288,7 @@ def main():
             break
     
     # Stop the robot as the program exits
-    send_params(0, 0)
+    # send_params(0, 0)
     detection.release_camera(cap)
     
 if __name__ == "__main__":

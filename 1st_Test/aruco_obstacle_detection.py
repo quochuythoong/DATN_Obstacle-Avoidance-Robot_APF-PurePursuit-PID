@@ -207,21 +207,21 @@ def draw_center_and_orientation(frame, corners, frame_height, frame_width):
         end_point_arrow = (end_x, end_y)
         cv2.arrowedLine(frame, (cx, frame_height - cy), (end_x, frame_height - end_y), (0, 255, 0), 2)  # Green arrow
 
-        # Display coordinates and angle in the top right corner
-        text_x_y = f"X: {cx}, Y: {cy}"
-        text_angle = f"Angle: {angle:.2f} deg"
+        # # Display coordinates and angle in the top right corner
+        # text_x_y = f"X: {cx}, Y: {cy}"
+        # text_angle = f"Angle: {angle:.2f} deg"
         
-        # Set positions for the text in the top right corner
-        top_right_x = frame_width - 200  # 200 pixels offset from the right edge
-        top_right_y = 30  # Offset from the top edge for the first line of text
-        line_spacing = 30  # Space between lines of text
+        # # Set positions for the text in the top right corner
+        # top_right_x = frame_width - 20  # 20 pixels offset from the right edge
+        # top_right_y = 30                # Offset from the top edge for the first line of text
+        # line_spacing = 30               # Space between lines of text
 
-        # Display the X, Y coordinates
-        cv2.putText(frame, text_x_y, (top_right_x, top_right_y), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        # # Display the X, Y coordinates
+        # cv2.putText(frame, text_x_y, (top_right_x, top_right_y), 
+        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
-        # Display the Angle
-        cv2.putText(frame, text_angle, (top_right_x, top_right_y + line_spacing), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+        # # Display the Angle
+        # cv2.putText(frame, text_angle, (top_right_x, top_right_y + line_spacing), 
+        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
     return center_coordinate, end_point_arrow, angle
