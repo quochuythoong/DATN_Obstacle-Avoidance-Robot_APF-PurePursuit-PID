@@ -26,7 +26,7 @@ def velocities_to_RPM(v1, v2):
     PWM2 = (rpm2 / 250) * 255 + 5
     return PWM1, PWM2
 
-def adaptive_lookahead(w1, w2, omega):
+def calculate_adaptive_lookahead(w1, w2, omega):
     global k1, k2, min_ld
     v_robot = wheel_scale * (w1 + w2) 
     # print(f"Current velocity: {v_current}")
@@ -37,8 +37,4 @@ def adaptive_lookahead(w1, w2, omega):
         tuned_ld = (k1 * v_robot) + (k2 * omega)
     ld = max(tuned_ld, min_ld)  # Ensure lookahead is not below min_ld
     # print(f"Lookahead distance after max: {ld}")
-    
-    # For testing only
-    # return 45
-
     return ld

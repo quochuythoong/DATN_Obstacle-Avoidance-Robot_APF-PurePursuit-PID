@@ -1,7 +1,7 @@
 import cv2
 
 def mouse_callback(event, x, y, flags, param):
-    clicked_points, reset_button_pos, start_button_pos, button_width, button_height, frame_height, start_pressed, interpolated_waypoints = param
+    clicked_points, reset_button_pos, start_button_pos, button_width, button_height, frame_height, start_pressed, interpolated_waypoints,latest_waypoint = param
     if event == cv2.EVENT_LBUTTONDOWN:
         # Check if the click was on the reset button using the original y
         if reset_button_pos[0] <= x <= reset_button_pos[0] + button_width and reset_button_pos[1] <= y <= reset_button_pos[1] + button_height:
