@@ -6,12 +6,14 @@ import numpy as np
 import cv2.aruco as aruco
 import matplotlib.pyplot as plt
 import utils
+from scipy.ndimage import gaussian_filter1d
 from utils import frame_height
 
 ###############################################################################
 # GLOBAL VARIABLES
 ###############################################################################
 output_filename = "Processed_image.jpg"
+aruco_path_store = []
 
 ###############################################################################
 # CAMERA FUNCTIONS
@@ -90,7 +92,7 @@ def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
 ###############################################################################
 def detect_aruco_and_obstacles(frame, gray):
     """ Detects ArUco markers and obstacles in the frame """
-    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_ARUCO_ORIGINAL)
+    aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
     parameters = aruco.DetectorParameters()
     corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
 
@@ -175,9 +177,6 @@ def detect_aruco_and_obstacles(frame, gray):
 
     print(f"Processed image saved as {output_filename}")
 
-    # Save detected coordinates to a .txt file
-    # save_coordinates_to_txt("Processed_image_data.txt", aruco_coordinates, obstacle_coordinates)
-
     return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse
 
 ###############################################################################
@@ -187,41 +186,118 @@ def detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters):
     corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
     return corners, ids
 
-def draw_center_and_orientation(frame, corners, frame_height, frame_width):
-    for i, corner in enumerate(corners):
-        points = corner[0]
-        
-        # Calculate the center coordinates
-        cx, cy = int(np.mean(points[:, 0])), frame_height - int(np.mean(points[:, 1]))
-        center_coordinate = (cx, cy)
-        
-        # Calculate the orientation angle
-        vec_x, vec_y = points[1][0] - points[0][0], points[0][1] - points[1][1]
-        angle = np.arctan2(vec_y, vec_x) * 180 / np.pi
+def draw_aruco_path(frame, aruco_path, color=(0, 255, 0), thickness=2):
+    """
+    Draws a green path on the given frame by connecting a sequence of ArUco coordinates.
 
-        # Draw the center and orientation arrow
-        cv2.circle(frame, (cx, frame_height - cy), 5, (0, 255, 0), -1)  # Green circle at the center
-        arrow_length = 50
-        end_x = int(cx + arrow_length * np.cos(angle * np.pi / 180))
-        end_y = int(cy + arrow_length * np.sin(angle * np.pi / 180))
-        end_point_arrow = (end_x, end_y)
-        cv2.arrowedLine(frame, (cx, frame_height - cy), (end_x, frame_height - end_y), (0, 255, 0), 2)  # Green arrow
+    Parameters:
+      frame (numpy.ndarray): The current image/frame.
+      aruco_path (list of tuples): A list of (x, y) coordinates of the ArUco over time.
+      color (tuple): BGR color of the line (default is green).
+      thickness (int): Thickness of the drawn line (default is 2).
 
-        # # Display coordinates and angle in the top right corner
-        # text_x_y = f"X: {cx}, Y: {cy}"
-        # text_angle = f"Angle: {angle:.2f} deg"
-        
-        # # Set positions for the text in the top right corner
-        # top_right_x = frame_width - 20  # 20 pixels offset from the right edge
-        # top_right_y = 30                # Offset from the top edge for the first line of text
-        # line_spacing = 30               # Space between lines of text
+    Returns:
+      numpy.ndarray: The frame with the drawn path.
+    """
+    # Check if there are at least 2 points to form a line
+    if len(aruco_path) < 2:
+        return frame
 
-        # # Display the X, Y coordinates
-        # cv2.putText(frame, text_x_y, (top_right_x, top_right_y), 
-        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+    # Draw line segments connecting consecutive points
+    for i in range(len(aruco_path) - 1):
+        pt1 = (int(aruco_path[i][0]), int(aruco_path[i][1]))
+        pt2 = (int(aruco_path[i+1][0]), int(aruco_path[i+1][1]))
+        cv2.line(frame, pt1, pt2, color, thickness)
 
-        # # Display the Angle
-        # cv2.putText(frame, text_angle, (top_right_x, top_right_y + line_spacing), 
-        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+def draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height):
+    """
+    Draw the center, orientation arrow, and display text for coordinates, angle, and lookahead distance.
+    
+    Parameters:
+      frame: The image frame.
+      center_coordinate: (cx, cy) tuple.
+      angle: Orientation angle in degrees.
+      end_point_arrow: Endpoint of the orientation arrow.
+      Adaptive_lookahead_pixels: Lookahead distance in pixels.
+      frame_width: Width of the frame.
+      frame_height: Height of the frame.
+      
+    Returns:
+      The modified frame.
+    """
+    # Draw the center and orientation arrow
+    cv2.circle(frame, (center_coordinate[0], frame_height - center_coordinate[1]), 5, (0, 255, 0), -1)
+    cv2.arrowedLine(frame, (center_coordinate[0], frame_height - center_coordinate[1]), 
+                    (end_point_arrow[0], frame_height - end_point_arrow[1]), (0, 255, 0), 2)
+    
+    # Prepare text information
+    text_x_y = f"X: {center_coordinate[0]}, Y: {center_coordinate[1]}"
+    text_angle = f"Angle: {angle:.2f} deg"
+    text_lookahead = f"Lookahead: {Adaptive_lookahead_pixels:.2f} px"
+    
+    # Set text positions
+    top_right_x = frame_width - 20  # 20 pixels offset from right edge
+    top_right_y = 30                # Top offset
+    line_spacing = 30               # Space between lines
+    
+    # Display text
+    cv2.putText(frame, text_x_y, (top_right_x, top_right_y), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+    cv2.putText(frame, text_angle, (top_right_x, top_right_y + line_spacing), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+    cv2.putText(frame, text_lookahead, (top_right_x, top_right_y + 2 * line_spacing), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
+def calculate_center_and_orientation(corners, frame_height):
+    """
+    Calculate the center coordinates and orientation angle from the detected ArUco corners.
+    
+    Parameters:
+      corners: Detected marker corners.
+      frame_height: The height of the frame (to adjust coordinate system).
+      
+    Returns:
+      center_coordinate: (cx, cy) tuple.
+      angle: Orientation angle in degrees.
+      end_point_arrow: The computed endpoint of the orientation arrow.
+    """
+    # Process only the first marker (or extend to process multiple markers if needed)
+    points = corners[0][0]
+    
+    # Calculate center coordinates
+    cx = int(np.mean(points[:, 0]))
+    cy = frame_height - int(np.mean(points[:, 1]))
+    center_coordinate = (cx, cy)
+    
+    # Calculate orientation angle using top-left and top-right corners
+    vec_x = points[1][0] - points[0][0]
+    vec_y = points[0][1] - points[1][1]
+    angle = np.arctan2(vec_y, vec_x) * 180 / np.pi
+    
+    # Calculate end of orientation arrow
+    arrow_length = 50
+    end_x = int(cx + arrow_length * np.cos(angle * np.pi / 180))
+    end_y = int(cy + arrow_length * np.sin(angle * np.pi / 180))
+    end_point_arrow = (end_x, end_y)
+    
     return center_coordinate, end_point_arrow, angle
+
+def aruco_path_plot(frame, center_coordinate, flag_end_waypoint):
+    global aruco_path_store, frame_height
+    aruco_path_store.append(center_coordinate)
+    aruco_path_store = np.array(aruco_path_store, dtype=np.float64).reshape(-1, 2)
+    
+    # Wait until the robot reaches the last waypoint, then interpolate and plot the path that the actual robot has taken
+    if flag_end_waypoint:
+        # Smooth the path using Gaussian filter
+        if aruco_path_store.shape[0] > 1:
+            aruco_path_store[:, 0] = gaussian_filter1d(aruco_path_store[:, 0], sigma=2)
+            aruco_path_store[:, 1] = gaussian_filter1d(aruco_path_store[:, 1], sigma=2)
+        
+        # Interpolate waypoints
+        aruco_path_store = utils.interpolate_waypoints(aruco_path_store, step_distance=1.0)
+        
+        # Draw the path on the frame
+        for point in aruco_path_store:
+            aruco_x_path, aruco_y_path = int(point[0]), int(frame_height - point[1]) # Convert to integers
+            cv2.circle(frame, (aruco_x_path, aruco_y_path), 2, (0, 255, 0), -1)  # Green color

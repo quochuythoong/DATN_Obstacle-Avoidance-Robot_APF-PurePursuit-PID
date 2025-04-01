@@ -16,8 +16,8 @@ global center_coordinate, end_point_arrow
 flag_end_waypoint = False
 distance_current = 0
 latest_waypoint = ()
-Adaptive_LookAHead = 0
-Adaptive_LookAHead_RealLife = 0
+Adaptive_LookAHead_pixels = 0   # Adaptive lookahead distance in pixels
+LookAHead_dist_current = min_ld # Real-life lookahead distance in meters
 omega = 0
 w1 = 0
 w2 = 0
@@ -104,7 +104,7 @@ def find_closest_point(current_position, waypoints, look_ahead_distance, error_t
 ###############################################################################
 # ADAPTIVE LOOKAHEAD
 ###############################################################################
-def adaptive_lookahead(w1, w2, omega):
+def calculate_adaptive_lookahead(w1, w2, omega):
     global k1, k2, min_ld
 
     # Robot velocity related to 2 wheels velocity
@@ -123,32 +123,30 @@ def adaptive_lookahead(w1, w2, omega):
 # PURE PURSUIT MAIN EXECUTION
 ###############################################################################
 def pure_pursuit_main(corners, global_path, frame):
-    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, Adaptive_LookAHead
-    
-    # Calculate Adaptive Lookahead
-    Adaptive_LookAHead = adaptive_lookahead(w1, w2, omega)
-    Adaptive_LookAHead_RealLife = Adaptive_LookAHead * 0.00102 # Convert pixel to meter in real life
+    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels
 
     # Draw center and orientation of the robot
     if corners:
-        center_coordinate, end_point_arrow, angle = detection.draw_center_and_orientation(frame, corners, frame_height, frame_width)
-    
+        center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners, frame_height)
+        detection.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
+        detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint)
+
     # Pure Pursuit approaching the last waypoints
     if len(global_path) <= 10:
         distance_current = math.sqrt((latest_waypoint[0] - center_coordinate[0])**2 + (latest_waypoint[1] - center_coordinate[1])**2)
-        if distance_current <= 15: # Last detected waypoints
+        if distance_current <= 30: # Last detected waypoints
             flag_end_waypoint = True
         else:
             projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
 
             # Calculate omega and wheel velocities
-            omega = calculate_omega(signed_distance, ConstVelocity, Adaptive_LookAHead_RealLife)
+            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
             R = ConstVelocity / omega if omega != 0 else float('inf')
             w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
 
     # Continuous Pure Pursuit
     if global_path:
-        closest_point, global_path = find_closest_point(center_coordinate, global_path, Adaptive_LookAHead)
+        closest_point, global_path = find_closest_point(center_coordinate, global_path, Adaptive_LookAHead_pixels)
         if closest_point:
             latest_waypoint = closest_point
             cv2.line(frame, 
@@ -159,9 +157,13 @@ def pure_pursuit_main(corners, global_path, frame):
             projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
 
             # Calculate omega and wheel velocities
-            omega = calculate_omega(signed_distance, ConstVelocity, Adaptive_LookAHead_RealLife)
+            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
             R = ConstVelocity / omega if omega != 0 else float('inf')
             w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+
+    # Use adaptive look ahead for next loop
+    Adaptive_lookahead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
+    LookAHead_dist_current = Adaptive_lookahead_pixels * 0.00102
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:

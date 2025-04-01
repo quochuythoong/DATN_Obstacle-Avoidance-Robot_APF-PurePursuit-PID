@@ -12,8 +12,21 @@ from FUNC_find_closest_point import find_closest_point
 from FUNC_calculate_signed_AH_and_projection import calculate_signed_AH_and_projection
 from FUNC_draw_buttons import draw_buttons
 
-# Control client flag
-flag_client_control = True
+
+############################### New changes
+'''
+    1. Bấm RESET xóa được 'interpolated_wapoints'
+    2. Flag client 'flag_client_control'
+    3. 
+'''
+
+# At the top of your file
+# global interpolated_waypoints, latest_waypoint, flag_clicked_point_added
+# interpolated_waypoints = []
+# latest_waypoint = None  # Use None instead of () for clarity
+# flag_clicked_point_added = False
+
+flag_client_control = False
 
 # Shared variables
 clicked_points = []
@@ -29,7 +42,7 @@ Adaptive_lookahead_pixels = 0
 LookAHead_dist_current = LookAHead_dist
 corners_save = None
 angle_save = None
-max_angle_different = 130
+max_angle_different = 90
 omega = 0
 w1 = 0
 w2 = 0
@@ -43,11 +56,11 @@ openCV.initialize_window(
 )
 
 # ArUco setup
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
 parameters = cv2.aruco.DetectorParameters()  
 
 # PID Parameters
-kp = 13
+kp = 12
 ki = 4
 kd = 0.1
 if flag_client_control:
@@ -67,69 +80,69 @@ while True:
 
     # Draw center and orientation
     if corners:
-        center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners, frame_height)
-        # Test filter ArUco
-        # if angle_save is not None and corners_save is not None:
-        #     if abs(angle - angle_save) > max_angle_different:
-        #         center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-        #     else:
-        #         corners_save = corners
-        #     angle_save = angle
-        # else:
-        #     corners_save = corners
-        #     angle_save = angle
-        openCV.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
-
+        center_coordinate, end_point_arrow, angle = openCV.draw_center_and_orientation(frame, corners, frame_height, frame_width)
+        # Test Filter ArUco
+        if angle_save is not None and corners_save is not None:
+            if abs(angle - angle_save) > max_angle_different:
+                center_coordinate, end_point_arrow, angle = openCV.draw_center_and_orientation(frame, corners_save, frame_height, frame_width)
+            else:
+                corners_save = corners
+            angle_save = angle
+        else:
+            corners_save = corners
+            angle_save = angle
+    
     # Draw clicked points
-    if clicked_points:
-        openCV.draw_clicked_points(frame, clicked_points, frame_height)
-    # print(f"Interpolated Waypoints: {len(interpolated_waypoints)}")
-    if len(clicked_points) > 1 and start_pressed[0] and ids is not None:
+    if ids is not None and start_pressed[0]:
+        if flag_client_control:
+            ena_PID(1) # Enable PID on motors
+        frame = openCV.draw_detected_markers(frame, corners, ids)
+        #print(f"Current waypoint len: {len(interpolated_waypoints)}")
+        #print(clicked_points)
         if (len(interpolated_waypoints) < 1) and (len(clicked_points) >= 1):
             if flag_clicked_point_added == False:
                 clicked_points.insert(0,center_coordinate)
-                # print("Interpolating waypoints...")
                 flag_clicked_point_added = True
-                interpolated_waypoints = interpolate_waypoints(clicked_points)
-
-        if interpolated_waypoints:
-            closest_point, interpolated_waypoints = find_closest_point(center_coordinate, interpolated_waypoints, Adaptive_lookahead_pixels)
-            if closest_point:
-                latest_waypoint = closest_point
-                projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
-                # Calculate omega and wheel velocities
-                print(f"Projection: {projection}, Signed Distance: {signed_distance}")
-                omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-                # print(f"Omega_up: {omega}")
-                R = ConstVelocity / omega if omega != 0 else float('inf')
-                w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
-                # w1, w2 = velocities_to_RPM(v1, v2)
-                #print(f"Left: {w1}, Right: {w2}")
-                cv2.line(frame, 
-                    (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
-                    (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
-                    (0, 255, 255), 2)
-
+                interpolated_waypoints =interpolate_waypoints(clicked_points)
         if len(interpolated_waypoints) <= 10:
             distance_current = math.sqrt((latest_waypoint[0] - center_coordinate[0])**2 + (latest_waypoint[1] - center_coordinate[1])**2)
-            if distance_current <= 30:
+            if distance_current <= 15:
                 flag_end_waypoint = True
             else:
                 projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
                 # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
                 # Calculate omega and wheel velocities
                 omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-                print(f"Omega_down: {omega}")
                 R = ConstVelocity / omega if omega != 0 else float('inf')
                 w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
                 # w1, w2 = velocities_to_RPM(v1, v2)
                 # print("PWM Left Wheel:", w1)
                 # print("PWM Right Wheel:", w2)
-        
-        frame = openCV.draw_detected_markers(frame, corners, ids) 
 
-        if flag_client_control:
-            ena_PID(1) # Enable PID on motors
+    # Draw clicked points
+    if clicked_points:
+        openCV.draw_clicked_points(frame, clicked_points, frame_height)
+
+    # Interpolation and signed distance calculation
+    if len(clicked_points) > 1:
+        if interpolated_waypoints:
+            closest_point, interpolated_waypoints = find_closest_point(center_coordinate, interpolated_waypoints, Adaptive_lookahead_pixels)
+            if closest_point:
+                latest_waypoint = closest_point
+                cv2.line(frame, 
+                 (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
+                 (int(closest_point[0]), int(-(closest_point[1]-frame_height))), 
+                 (0, 255, 255), 2)
+                #print("Closest point:", closest_point)
+                projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+                # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
+                # Calculate omega and wheel velocities
+                omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
+                R = ConstVelocity / omega if omega != 0 else float('inf')
+                w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+                # w1, w2 = velocities_to_RPM(v1, v2)
+                #time.sleep(0.01)
+                #print(f"Left: {w1}, Right: {w2}")
 
     # Use adaptive look ahead for next loop
     Adaptive_lookahead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
@@ -138,8 +151,6 @@ while True:
     if start_pressed[0] == False:
         flag_clicked_point_added = False
         flag_end_waypoint = False
-        corners_save = None
-        angle_save = None
         interpolated_waypoints.clear()
         if flag_client_control:
             ena_PID(0)
@@ -151,7 +162,7 @@ while True:
             ena_PID(0)
         w1 = 0
         w2 = 0
-        # clicked_points.clear()
+        clicked_points.clear()
         interpolated_waypoints.clear()
     # Send w1, w2 to client
     if flag_client_control:

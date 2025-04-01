@@ -4,11 +4,11 @@
 import cv2
 import aruco_obstacle_detection as detection
 import utils
+import client_control as client
 from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
 from Basic_APF import apf_path_planning
 from Predictive_APF import predictive_path 
 from utils import frame_height, kp, ki, kd
-from client_control import send_params, send_PID, ena_PID
 
 ###############################################################################
 # GLOBAL VARIABLES
@@ -26,6 +26,11 @@ global_path = None           # Global path for Pure Pursuit
 global_path_plot = None      # Global path for plotting (hold on)
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
 deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
+
+###############################################################################
+# Flag to control client
+###############################################################################
+flag_client_control = False
 
 ###############################################################################
 # ARUCO SETUP
@@ -67,17 +72,18 @@ def mouse_callback(event, x, y, flags, param):
             path_planning_enable = False
             run_robot = False
             goal_set_points = None
-            global_path = None
+            global_path.clear() # global_path = None (interpolated_waypoints.clear())
             global_path_plot = None
             pure_pursuit_enable = False
             disable_pure_pursuit()
-            ena_PID(0)  # Disable PID
-            # send_params(0, 0)  # Stop the robot
+            if flag_client_control:
+                client.ena_PID(0)  # Disable PID
+                client.send_params(0, 0)  # Stop the robot
 
         # Clear button
         elif CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]:
-            goal_set_points.clear()
             print("Cleared all selections.")
+            goal_set_points.clear()
 
         # PLAN_PATH button (Does nothing for now)
         elif coordinates_ready and PLAN_PATH_BUTTON_POS[0] <= x <= PLAN_PATH_BUTTON_POS[2] and PLAN_PATH_BUTTON_POS[1] <= y <= PLAN_PATH_BUTTON_POS[3]:
@@ -87,7 +93,8 @@ def mouse_callback(event, x, y, flags, param):
 
         elif run_robot and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
             print("Running the robot...")
-            ena_PID(1) # Enable PID
+            if flag_client_control:
+                client.ena_PID(1) # Enable PID
             pure_pursuit_enable = True
             enable_pure_pursuit()
 
@@ -251,7 +258,8 @@ def main():
     cv2.setMouseCallback("Unified View", mouse_callback)
 
     # send_PID to robot
-    # send_PID(kp, ki, kd)
+    if flag_client_control:
+        client.send_PID(kp, ki, kd)
 
     while True: # Loop until 'Reset' or 'q' is pressed
         frame, gray = detection.process_frame(cap)
@@ -288,7 +296,9 @@ def main():
             break
     
     # Stop the robot as the program exits
-    # send_params(0, 0)
+    if flag_client_control:
+        client.send_params(0, 0)
+
     detection.release_camera(cap)
     
 if __name__ == "__main__":
