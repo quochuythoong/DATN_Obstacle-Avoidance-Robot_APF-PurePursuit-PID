@@ -5,6 +5,7 @@ import cv2
 import aruco_obstacle_detection as detection
 import utils
 import client_control as client
+import numpy as np
 from pure_pursuit import pure_pursuit_main, disable_pure_pursuit, enable_pure_pursuit
 from Basic_APF import apf_path_planning
 from Predictive_APF import predictive_path 
@@ -18,24 +19,26 @@ coordinates_ready = False    # Flag to show PLAN_PATH button
 predictive_APF_enable = True # Flag to enable Predictive APF
 aruco_coordinates = None     # Detected ArUco marker coordinates
 obstacle_coordinates = None  # Detected obstacle coordinates
-goal_set_points = None       # Selected goal points
+goal_set_points = []         # Selected goal points
 path_planning_enable = False # Flag to plan path
 run_robot = False            # Flag to run the robot
 pure_pursuit_enable = False  # Flag to enable Pure Pursuit
-global_path = None           # Global path for Pure Pursuit
+global_path = []             # Global path for Pure Pursuit
 global_path_plot = None      # Global path for plotting (hold on)
+interp_points_ellipse = []   # Global ellipse points
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
+aruco_path = []              # Global ArUco path
 deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
 
 ###############################################################################
 # Flag to control client
 ###############################################################################
-flag_client_control = False
+flag_client_control = True
 
 ###############################################################################
 # ARUCO SETUP
 ###############################################################################
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
 parameters = cv2.aruco.DetectorParameters()  
 
 ###############################################################################
@@ -43,9 +46,9 @@ parameters = cv2.aruco.DetectorParameters()
 ###############################################################################
 START_BUTTON_POS     = (5, 10, 65, 30)      # Green Start button
 RESET_BUTTON_POS     = (75, 10, 135, 30)    # Red Reset button
-CLEAR_BUTTON_POS     = (75, 35, 135, 55)   # Blue Clear button
-PLAN_PATH_BUTTON_POS = (5, 35, 65, 55)     # Yellow PLAN_PATH button (Initially hidden)
-APF_PAPF_BUTTON_POS  = (5, 60, 135, 80)    # Green/Red APF_PAPF button (toggle APF_PAPF flag)
+CLEAR_BUTTON_POS     = (75, 35, 135, 55)    # Blue Clear button
+PLAN_PATH_BUTTON_POS = (5, 35, 65, 55)      # Yellow PLAN_PATH button (Initially hidden)
+APF_PAPF_BUTTON_POS  = (5, 60, 135, 80)     # Green/Red APF_PAPF button (toggle APF_PAPF flag)
 RUN_BUTTON_POS       = (145, 10, 205, 80)   # Orange RUN button (appears after path planning)
 
 # Position text directly below APF_PAPF button
@@ -56,7 +59,8 @@ flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 # FRAME INTERACTION 
 ###############################################################################
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path 
+    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -65,20 +69,35 @@ def mouse_callback(event, x, y, flags, param):
 
         # Reset all processes
         elif RESET_BUTTON_POS[0] <= x <= RESET_BUTTON_POS[2] and RESET_BUTTON_POS[1] <= y <= RESET_BUTTON_POS[3]:
-            detection_active = False
-            coordinates_ready = False
-            aruco_coordinates = None
-            obstacle_coordinates = None
-            path_planning_enable = False
-            run_robot = False
-            goal_set_points = None
-            global_path.clear() # global_path = None (interpolated_waypoints.clear())
-            global_path_plot = None
-            pure_pursuit_enable = False
-            disable_pure_pursuit()
+            # Reset various flags and states
+            detection_active = False        # Disable obstacle detection
+            coordinates_ready = False       # Clear coordinate readiness status
+
+            # Reset key coordinate variables
+            aruco_coordinates = None        # Clear ArUco marker coordinates
+            obstacle_coordinates = None     # Clear obstacle coordinates
+
+            # Clear stored interpolation and path planning data
+            interp_points_ellipse.clear()   # Clear interpolated points for the ellipse
+            global_ellipse_plot.clear()     # Clear global ellipse plot data
+            goal_set_points.clear()         # Clear goal points
+            global_path.clear()             # Clear global planned path
+
+            # Reset path and motion control states
+            path_planning_enable = False    # Disable path planning
+            run_robot = False               # Stop robot execution
+            global_path_plot = None         # Clear plotted path
+            aruco_path = None               # Clear ArUco-based path
+            pure_pursuit_enable = False     # Disable Pure Pursuit mode
+            disable_pure_pursuit()          # Call function to disable Pure Pursuit
+
+            # Stop the robot if controlled by a client
             if flag_client_control:
-                client.ena_PID(0)  # Disable PID
-                client.send_params(0, 0)  # Stop the robot
+                client.ena_PID(0)           # Disable PID control
+                client.send_params(0, 0)    # Stop the robot's movement
+
+            # Print confirmation message
+            print("RESET pressed")
 
         # Clear button
         elif CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]:
@@ -164,20 +183,18 @@ def draw_overlay(frame):
     if goal_set_points:
         cv2.circle(frame, (goal_set_points[0], frame_height - goal_set_points[1]), 5, (0, 0, 255), -1)
 
+    # Draw ellipse boundings
     if global_ellipse_plot is not None:
         for ellipse in global_ellipse_plot:
-            x_ellipse, y_ellipse = int(ellipse[0]), int(frame_height - ellipse[1])
-            cv2.circle(frame, (x_ellipse, y_ellipse), 1, (255, 0, 0), -1)  # Blue color
-        else:
-            global_ellipse_plot = [] # Reset the ellipse
+            for point in ellipse:
+                x_ellipse, y_ellipse = point[0], point[1]
+                cv2.circle(frame, (x_ellipse, y_ellipse), 1, (255, 255, 0), -1)     # Pastel-blue color
 
     # Draw the stored path as red dots (hold  on)
     if global_path_plot is not None:
         for point in global_path_plot:
             x_global_path, y__global_path = int(point[0]), int(frame_height - point[1])
             cv2.circle(frame, (x_global_path, y__global_path), 1, (0, 0, 255), -1)  # Red color
-    else:
-        global_path_plot = []  # Reset the path
     
     return frame
 
@@ -212,45 +229,16 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
         cv2.circle(frame, (x_path, y_path), 2, (0, 0, 255), -1)  # Red color
 
     # Save the final frame with the plotted path as a JPG image
-    output_frame_filename = "Final_path.jpg"
+    output_frame_filename = "2_Final_path.jpg"
     cv2.imwrite(output_frame_filename, frame)
     print(f"Final path saved as {output_frame_filename}")
-
-''' PLOTTING MATPLOTLIB FIGURES (Potential field ...)
-    # Plot the results
-    plt.figure(figsize=(6,11))
-    plt.plot(path[:, 0], path[:, 1], "b.-", label="Smoothed Path")
-    plt.scatter(*zip(*obstacle_coordinates), color="red", label="Obstacles")
-    # Ensure goal_set_points is not None before plotting
-    if goal_set_points is not None and len(goal_set_points) > 0:
-        plt.scatter(goal_set_points[0], goal_set_points[1], color="green", marker="x", s=100, label="Goal")
-    # Ensure aruco_coordinates is not None and contains at least one detected marker before plotting
-    if aruco_coordinates is not None and len(aruco_coordinates) > 0:
-        plt.scatter(aruco_coordinates[0], aruco_coordinates[1], color="black", marker="o", label="Start")
-    plt.grid()
-    plt.xlabel("X-axis (pixels)")
-    plt.ylabel("Y-axis (pixels)")
-    plt.title("Artificial Potential Field Path Planning with Smoothing")
-    plt.legend()
-
-    # Plot the potential field evolution
-    plt.figure()
-    plt.plot(potential_values, "r-", label="Potential Field Value")
-    plt.xlabel("Step")
-    plt.ylabel("Potential")
-    plt.title("Potential Field over Steps")
-    plt.legend()
-    plt.grid()
-
-    # Display the Matplotlib figures (pauses execution until closed)
-    plt.show()
-# --------------------------------- PLOTTING MATPLOTLIB FIGURES --------------------------------- ''' 
     
 ###############################################################################
 # MAIN 
 ###############################################################################
 def main():
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, global_path_plot, global_ellipse_plot, kp, ki, kd
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable 
+    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd
     
     # Initialize camera and window
     cap = detection.initialize_camera()
@@ -262,6 +250,7 @@ def main():
         client.send_PID(kp, ki, kd)
 
     while True: # Loop until 'Reset' or 'q' is pressed
+
         frame, gray = detection.process_frame(cap)
         if frame is None:
             break
@@ -270,7 +259,8 @@ def main():
         if detection_active:
             # Perform detection once when START is pressed
             detection_active = False  # Disable after one capture
-            aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, global_ellipse_plot = detection.detect_aruco_and_obstacles(frame, gray)
+            aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse = detection.detect_aruco_and_obstacles(frame, gray)
+            global_ellipse_plot = interp_points_ellipse
             coordinates_ready = True
             print("Aruco Coordinates:", aruco_coordinates)
         
@@ -282,7 +272,7 @@ def main():
         # Perform Pure Pursuit
         if pure_pursuit_enable:
             corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
-            global_path = pure_pursuit_main(corners, global_path, frame)
+            global_path, aruco_path = pure_pursuit_main(corners, global_path, frame)
 
         # Draw buttons and overlay information (GUI)
         draw_overlay(frame)
@@ -297,6 +287,7 @@ def main():
     
     # Stop the robot as the program exits
     if flag_client_control:
+        client.ena_PID(0)
         client.send_params(0, 0)
 
     detection.release_camera(cap)

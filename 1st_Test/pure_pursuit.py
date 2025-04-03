@@ -7,7 +7,7 @@ import math
 import cv2
 import aruco_obstacle_detection as detection
 from client_control import send_params, ena_PID
-from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale
+from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale, real_ld_scale, max_ld
 
 ###############################################################################
 # GLOBAL VARIABLES
@@ -16,8 +16,9 @@ global center_coordinate, end_point_arrow
 flag_end_waypoint = False
 distance_current = 0
 latest_waypoint = ()
-Adaptive_LookAHead_pixels = 0   # Adaptive lookahead distance in pixels
-LookAHead_dist_current = min_ld # Real-life lookahead distance in meters
+aruco_path = None
+Adaptive_LookAHead_pixels = min_ld  # Adaptive lookahead distance in pixels
+LookAHead_dist_current = min_ld * real_ld_scale    # Real-life lookahead distance in meters
 omega = 0
 w1 = 0
 w2 = 0
@@ -41,12 +42,29 @@ def calculate_omega(AH, v, lt):
     return omega
 
 def calculate_wheel_velocities(omega, R, Ld):
-    v1 = omega * (R + Ld)
-    v2 = omega * (R - Ld)
+    if abs(omega) < 1e-6:
+        v1 = ConstVelocity
+        v2 = ConstVelocity
+    else:
+        v1 = omega * (R + Ld)
+        v2 = omega * (R - Ld)
 
-    # v/wheel_radius (rad/s)
-    w1 = v1 / 0.0215 
+    w1 = v1 / 0.0215 # rad/s
     w2 = v2 / 0.0215
+
+    # Limit negative values
+    if w1 < 0:
+        w1 = 0
+    elif w2 < 0:
+        w2 = 0
+
+    # Limit wheel velocities
+    if w1 > 10:
+        w1 = 10
+    if w2 > 10:
+        w2 = 10
+
+    print(f"Wheel 1: {w1}, Wheel 2: {w2}")
     return w1, w2
 
 def calculate_signed_AH_and_projection(A, B, C):
@@ -72,7 +90,7 @@ def calculate_signed_AH_and_projection(A, B, C):
     else:
         signed_distance = -AH_magnitude  # H is on the opposite side of B with respect to A
 
-    signed_distance = signed_distance * 0.0024245 # Convert pixel to meter in real life
+    signed_distance = signed_distance * real_ld_scale # Convert pixel to meter in real life
 
     return projection_point.tolist(), signed_distance
 
@@ -117,19 +135,24 @@ def calculate_adaptive_lookahead(w1, w2, omega):
         tuned_ld = (k1 * v_robot) + (k2 * omega)
 
     ld = max(tuned_ld, min_ld)  # Ensure lookahead is not below min_ld
+
+    # Limit lookahead distance
+    if ld > max_ld:
+        ld = max_ld
+        
     return ld
 
 ###############################################################################
 # PURE PURSUIT MAIN EXECUTION
 ###############################################################################
 def pure_pursuit_main(corners, global_path, frame):
-    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels
+    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels, aruco_path
 
     # Draw center and orientation of the robot
     if corners:
         center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners, frame_height)
-        detection.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
-        detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint)
+        detection.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_LookAHead_pixels, frame_width, frame_height)
+        aruco_path = detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint)
 
     # Pure Pursuit approaching the last waypoints
     if len(global_path) <= 10:
@@ -148,10 +171,11 @@ def pure_pursuit_main(corners, global_path, frame):
     if global_path:
         closest_point, global_path = find_closest_point(center_coordinate, global_path, Adaptive_LookAHead_pixels)
         if closest_point:
+            print(f"closest_point: {closest_point}")
             latest_waypoint = closest_point
             cv2.line(frame, 
                 (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
-                (int(closest_point[0]), int(-(closest_point[1]-frame_height))), 
+                (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
                 (0, 255, 255), 2)
 
             projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
@@ -162,8 +186,8 @@ def pure_pursuit_main(corners, global_path, frame):
             w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
 
     # Use adaptive look ahead for next loop
-    Adaptive_lookahead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
-    LookAHead_dist_current = Adaptive_lookahead_pixels * 0.00102
+    Adaptive_LookAHead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
+    LookAHead_dist_current = Adaptive_LookAHead_pixels * real_ld_scale
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
@@ -172,6 +196,6 @@ def pure_pursuit_main(corners, global_path, frame):
         w2 = 0
 
     # Send w1, w2 to client
-    # send_params(w1, w2)
+    send_params(w1, w2)
 
-    return global_path
+    return global_path, aruco_path

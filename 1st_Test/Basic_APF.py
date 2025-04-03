@@ -111,20 +111,17 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 # APF PATH PLANNING
 ###############################################################################
-def apf_path_planning(start, goal, obstacles, k_att=0.0001, k_rep=100000.0, d0=95.0, max_iters=5000):
+def apf_path_planning(start, goal, obstacles, k_att=0.0002, k_rep=100000.0, d0=65.0, max_iters=1000):
     global epsilon, step_size
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
     goal = np.array(goal, dtype=np.float64).flatten()
     obstacles = np.array(obstacles, dtype=np.float64) if obstacles else np.empty((0, 2))
     
-    # potential_values = []
-    
     for _ in range(max_iters):
         basic_apf_calculated = basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size)
         q += step_size * basic_apf_calculated  # Move based on gradient
         path.append(q.copy())
-        # potential_values.append(total_potential(q, goal, obstacles, k_att, k_rep, d0))
         
         # Check if goal is reached
         if np.linalg.norm(q - goal) < 0.1:

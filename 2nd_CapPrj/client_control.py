@@ -14,17 +14,6 @@ def send_params(value1, value2):
     except requests.exceptions.RequestException as e:
         pass
 
-# def send_params(value1, value2, kp, ki, kd):
-#     try:
-#         # Include both parameters in the URL
-#         response = requests.get(f"{esp32_ip}/?left={value1}&right={value2}&kp={kp}&ki={ki}&kd={kd}")
-#         if response.status_code == 200:
-#             print(f"Sent left={value1}, right={value2} successfully, kp={kp}, ki={ki}, kd={kd}")
-#         else:
-#             print(f"Failed to send params, status code:", response.status_code)
-#     except requests.exceptions.RequestException as e:
-#         pass
-
 def send_PID(kp, ki, kd):
     try:
         # Include both parameters in the URL

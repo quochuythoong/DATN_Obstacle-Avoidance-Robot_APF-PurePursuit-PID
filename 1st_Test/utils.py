@@ -14,21 +14,23 @@ frame_width  = 480     # Frame width
 ###############################################################################
 
 # Robot parameters
-ConstVelocity = 0.055   # Constant velocity in m/s (0.1505m/s = 7rad/s * )
-Wheels_dist   = 0.05    # Distance between wheels in meters
+ConstVelocity = 0.07    # Constant velocity in m/s (0.1505m/s = 7rad/s * )
+Wheels_dist   = 0.085   # Distance between wheels in meters
 wheel_scale   = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
 # Adaptive Look-ahead parameters 
-k1            = 80 / ConstVelocity                     # Gain for the linear velocity (v)
-k2            = - 60 / (2 * ConstVelocity / 0.0215)    # Gain for the angular velocity (w)
-min_ld        = 45                                     # Minimum look-ahead distance (pixels)
+real_ld_scale = 0.00102                                # Ratio between m and px
+k1            = 60 / ConstVelocity                     # Gain for the linear velocity (v)
+k2            = - 50 / (2 * ConstVelocity / 0.0215)    # Gain for the angular velocity (w)
+max_ld        = 60                                     # Maximum look-ahead distance (pixels)
+min_ld        = 40                                     # Minimum look-ahead distance (pixels)
 
 ###############################################################################
 # PID PARAMETERS
 ###############################################################################
-kp            = 5       # Proportional 
-ki            = 3       # Integral
-kd            = 0       # Derivative
+kp            = 12       # Proportional 
+ki            = 4        # Integral
+kd            = 0.1      # Derivative
 
 ###############################################################################
 # ADD-ON FUNCTIONS (Interpolate)

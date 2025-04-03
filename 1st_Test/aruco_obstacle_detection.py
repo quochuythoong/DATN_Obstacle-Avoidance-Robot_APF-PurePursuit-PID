@@ -12,7 +12,7 @@ from utils import frame_height
 ###############################################################################
 # GLOBAL VARIABLES
 ###############################################################################
-output_filename = "Processed_image.jpg"
+output_filename = "1_Processed_image.jpg"
 aruco_path_store = []
 
 ###############################################################################
@@ -88,6 +88,27 @@ def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
     return interp_ellipse
 
 ###############################################################################
+# SMALL OBSTACLES FILTER
+###############################################################################
+def filter_small_obstacles(contours, min_points=1):
+    """
+    Filters out contours that have min_points or fewer points.
+    
+    Parameters:
+      contours (list): List of contour arrays.
+      min_points (int): Minimum number of points required to keep a contour.
+    
+    Returns:
+      list: Filtered list of contours with more than min_points.
+    """
+    filtered_contours = []
+    for cnt in contours:
+        # cnt may have shape (N, 1, 2) or (N, 2)
+        if cnt.shape[0] > min_points:
+            filtered_contours.append(cnt)
+    return filtered_contours
+
+###############################################################################
 # ARUCO & OBSTACLES DETECTION
 ###############################################################################
 def detect_aruco_and_obstacles(frame, gray):
@@ -129,28 +150,30 @@ def detect_aruco_and_obstacles(frame, gray):
             pts = marker.reshape((-1, 1, 2)).astype(np.int32)
             cv2.fillPoly(mask, [pts], 255)
         # Dilate the mask to extend the filled region (e.g., by 10 pixels)
-        kernel = np.ones((30, 30), np.uint8)
-        dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+        kernel = np.ones((10, 10), np.uint8)
+        dilated_mask = cv2.dilate(mask, kernel, iterations=5)
         # Set the dilated region in the edges image to black
         edges[dilated_mask == 255] = 0
     # -------------------------------------------
 
+    # Detect Contours
     contours, hierarchy = cv2.findContours(edges.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
+    
+    # Filter small contours
+    small_contours_removed = filter_small_obstacles(contours, min_points=20)
+    
     # Prepare a Matplotlib figure to display the edge detection image
     plt.figure(figsize=(10, 10))
     plt.imshow(edges, cmap='gray')
 
     obstacle_coordinates = []
-    for idx, cnt in enumerate(contours):
+    appended_interp_points_ellipse = []
+    for idx, cnt in enumerate(small_contours_removed):
         # Convert contour points into a list of (x, y) tuples
         coords = cnt.reshape(-1, 2).tolist()
         
         # Interpolate along the contour's points using the provided function
         contour_interp_points = utils.interpolate_waypoints_contour(coords) # OpenCV axis (with downward y)
-        
-        # Invert y-coordinates of detected obstacles
-        inverted_interp_points = [(x, frame_height - y) for x, y in contour_interp_points] # Upward y axis
 
         # Ellipse bounding of detected obstacles
         ellipse_bounded_obstacles_show = ellipse_bounding(contour_interp_points)
@@ -168,6 +191,8 @@ def detect_aruco_and_obstacles(frame, gray):
         interp_points_ellipse = np.array(ellipse_bounded_obstacles_show)
         plt.scatter(interp_points_ellipse[:, 0], interp_points_ellipse[:, 1],
                     s=5, color='red', label=f"Contour {idx} ellipse")
+        
+        appended_interp_points_ellipse.append(interp_points_ellipse.tolist())
 
     # Display the Matplotlib figure
     plt.title("Edge Detection with Interpolated Coordinates & Ellipse (ArUco Ignored)")
@@ -177,7 +202,7 @@ def detect_aruco_and_obstacles(frame, gray):
 
     print(f"Processed image saved as {output_filename}")
 
-    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse
+    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, appended_interp_points_ellipse
 
 ###############################################################################
 # PURE PURSUIT ADD-ON FUNCTIONS (LIVE TRACKING)
@@ -284,15 +309,12 @@ def calculate_center_and_orientation(corners, frame_height):
 
 def aruco_path_plot(frame, center_coordinate, flag_end_waypoint):
     global aruco_path_store, frame_height
+
     aruco_path_store.append(center_coordinate)
-    aruco_path_store = np.array(aruco_path_store, dtype=np.float64).reshape(-1, 2)
     
     # Wait until the robot reaches the last waypoint, then interpolate and plot the path that the actual robot has taken
     if flag_end_waypoint:
-        # Smooth the path using Gaussian filter
-        if aruco_path_store.shape[0] > 1:
-            aruco_path_store[:, 0] = gaussian_filter1d(aruco_path_store[:, 0], sigma=2)
-            aruco_path_store[:, 1] = gaussian_filter1d(aruco_path_store[:, 1], sigma=2)
+        aruco_path_store = np.array(aruco_path_store, dtype=np.float64).reshape(-1, 2)
         
         # Interpolate waypoints
         aruco_path_store = utils.interpolate_waypoints(aruco_path_store, step_distance=1.0)

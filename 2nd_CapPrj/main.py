@@ -13,7 +13,7 @@ from FUNC_calculate_signed_AH_and_projection import calculate_signed_AH_and_proj
 from FUNC_draw_buttons import draw_buttons
 
 # Control client flag
-flag_client_control = True
+flag_client_control = False
 
 # Shared variables
 clicked_points = []
