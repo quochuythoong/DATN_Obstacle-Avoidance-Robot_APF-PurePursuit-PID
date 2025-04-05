@@ -29,7 +29,7 @@ Adaptive_lookahead_pixels = 0
 LookAHead_dist_current = LookAHead_dist
 corners_save = None
 angle_save = None
-max_angle_different = 130
+max_angle_different = 70
 omega = 0
 w1 = 0
 w2 = 0
@@ -67,17 +67,18 @@ while True:
 
     # Draw center and orientation
     if corners:
-        center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners, frame_height)
+        center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners, frame_height) 
         # Test filter ArUco
-        # if angle_save is not None and corners_save is not None:
-        #     if abs(angle - angle_save) > max_angle_different:
-        #         center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-        #     else:
-        #         corners_save = corners
-        #     angle_save = angle
-        # else:
-        #     corners_save = corners
-        #     angle_save = angle
+        if angle_save is not None and corners_save is not None:
+            if angle < 0:
+                if abs(angle + 360 - angle_save) > max_angle_different:
+                    center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
+            elif angle >= 0:
+                if abs(angle - angle_save) > max_angle_different:
+                    center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
+        else:
+            corners_save = corners
+            angle_save = angle
         openCV.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
 
     # Draw clicked points

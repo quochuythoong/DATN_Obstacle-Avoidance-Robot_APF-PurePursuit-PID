@@ -29,6 +29,8 @@ interp_points_ellipse = []   # Global ellipse points
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
 aruco_path = []              # Global ArUco path
 deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
+angle_save = None            # Angle of the detected ArUco marker
+corners_save = None          # Detected corners of the ArUco marker
 
 ###############################################################################
 # Flag to control client
@@ -60,7 +62,7 @@ flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 ###############################################################################
 def mouse_callback(event, x, y, flags, param):
     global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path 
-    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path
+    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path, corners_save, angle_save
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -87,7 +89,7 @@ def mouse_callback(event, x, y, flags, param):
             path_planning_enable = False    # Disable path planning
             run_robot = False               # Stop robot execution
             global_path_plot = None         # Clear plotted path
-            aruco_path = None               # Clear ArUco-based path
+            aruco_path = []                 # Clear ArUco-based path
             pure_pursuit_enable = False     # Disable Pure Pursuit mode
             disable_pure_pursuit()          # Call function to disable Pure Pursuit
 
@@ -238,7 +240,7 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
 ###############################################################################
 def main():
     global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable 
-    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd
+    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd, angle_save, corners_save
     
     # Initialize camera and window
     cap = detection.initialize_camera()
@@ -272,7 +274,7 @@ def main():
         # Perform Pure Pursuit
         if pure_pursuit_enable:
             corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
-            global_path, aruco_path = pure_pursuit_main(corners, global_path, frame)
+            global_path, aruco_path, angle_save, corners_save = pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, flag_client_control, aruco_path)
 
         # Draw buttons and overlay information (GUI)
         draw_overlay(frame)

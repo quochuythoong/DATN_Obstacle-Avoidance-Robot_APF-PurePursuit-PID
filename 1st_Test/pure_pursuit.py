@@ -6,8 +6,8 @@ import numpy as np
 import math
 import cv2
 import aruco_obstacle_detection as detection
-from client_control import send_params, ena_PID
-from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale, real_ld_scale, max_ld
+import client_control as client
+from utils import Wheels_dist, ConstVelocity, frame_height, frame_width, k1, k2, min_ld, wheel_scale, real_ld_scale, max_ld, max_angle_different
 
 ###############################################################################
 # GLOBAL VARIABLES
@@ -16,7 +16,6 @@ global center_coordinate, end_point_arrow
 flag_end_waypoint = False
 distance_current = 0
 latest_waypoint = ()
-aruco_path = None
 Adaptive_LookAHead_pixels = min_ld  # Adaptive lookahead distance in pixels
 LookAHead_dist_current = min_ld * real_ld_scale    # Real-life lookahead distance in meters
 omega = 0
@@ -38,7 +37,7 @@ def enable_pure_pursuit():
 # PURE PURSUIT CALCULATION
 ###############################################################################
 def calculate_omega(AH, v, lt):
-    omega = (2 * AH * v) / (lt ** 2)
+    omega = (2 * AH * v) / (lt ** 2) # rad/s
     return omega
 
 def calculate_wheel_velocities(omega, R, Ld):
@@ -128,6 +127,8 @@ def calculate_adaptive_lookahead(w1, w2, omega):
     # Robot velocity related to 2 wheels velocity
     v_robot = wheel_scale * (w1 + w2)
 
+    print(f"omega: {omega}, v_robot: {v_robot}")
+
     # Tuned lookahead distance
     if omega < 0: # Negative omega --> turn right
         tuned_ld = (k1 * v_robot) - (k2 * omega) 
@@ -145,14 +146,24 @@ def calculate_adaptive_lookahead(w1, w2, omega):
 ###############################################################################
 # PURE PURSUIT MAIN EXECUTION
 ###############################################################################
-def pure_pursuit_main(corners, global_path, frame):
-    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels, aruco_path
+def pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, flag_client_control, aruco_path):
+    global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels, max_angle_different
 
     # Draw center and orientation of the robot
     if corners:
         center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners, frame_height)
+        # # Test filter ArUco
+        # if angle_save is not None and corners_save is not None:
+        #     if angle < 0:
+        #         if abs(angle + 360 - angle_save) > max_angle_different:
+        #             center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners_save, frame_height)
+        #             angle_save = angle
+        # else:
+        #     corners_save = corners
+        #     angle_save = angle
+
         detection.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_LookAHead_pixels, frame_width, frame_height)
-        aruco_path = detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint)
+        aruco_path = detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path)
 
     # Pure Pursuit approaching the last waypoints
     if len(global_path) <= 10:
@@ -191,11 +202,13 @@ def pure_pursuit_main(corners, global_path, frame):
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
-        ena_PID(0)  # Disable PID
+        if flag_client_control:
+            client.ena_PID(0)  # Disable PID
         w1 = 0
         w2 = 0
 
     # Send w1, w2 to client
-    send_params(w1, w2)
+    if flag_client_control:
+        client.send_params(w1, w2)
 
-    return global_path, aruco_path
+    return global_path, aruco_path, angle_save, corners_save

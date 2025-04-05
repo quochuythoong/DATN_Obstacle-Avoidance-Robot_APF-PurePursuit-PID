@@ -6,31 +6,34 @@ import numpy as np
 ###############################################################################
 # FRAME DIMENSIONS
 ###############################################################################
-frame_height = 640     # Frame height
-frame_width  = 480     # Frame width
+frame_height = 1080     # Frame height
+frame_width  = 1920     # Frame width
 
 ###############################################################################
 # PURE PURSUIT PARAMETERS
 ###############################################################################
 
 # Robot parameters
-ConstVelocity = 0.07    # Constant velocity in m/s (0.1505m/s = 7rad/s * )
+ConstVelocity = 0.08    # Constant velocity in m/s (0.1505m/s = 7rad/s * ) --- currently 0.07m/s = 3.255rad/s
 Wheels_dist   = 0.085   # Distance between wheels in meters
 wheel_scale   = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
+# ArUco angle filter parameters
+max_angle_different = 70 # Maximum angle difference in degrees for filtering ArUco angles
+
 # Adaptive Look-ahead parameters 
-real_ld_scale = 0.00102                                # Ratio between m and px
-k1            = 60 / ConstVelocity                     # Gain for the linear velocity (v)
-k2            = - 50 / (2 * ConstVelocity / 0.0215)    # Gain for the angular velocity (w)
-max_ld        = 60                                     # Maximum look-ahead distance (pixels)
-min_ld        = 40                                     # Minimum look-ahead distance (pixels)
+real_ld_scale = 0.00115625                             # Ratio between m and px
+k1            = 150 / ConstVelocity                    # Gain for the linear velocity (v)
+k2            = - 1220 / (2 * ConstVelocity / 0.0215)   # Gain for the angular velocity (w) --- (2 * ConstVelocity / 0.0215) = w --- currently minus 50 pixels of ld when omega = max = 0.4
+max_ld        = 150                                    # Maximum look-ahead distance (pixels)
+min_ld        = 75                                     # Minimum look-ahead distance (pixels)
 
 ###############################################################################
 # PID PARAMETERS
 ###############################################################################
-kp            = 12       # Proportional 
-ki            = 4        # Integral
-kd            = 0.1      # Derivative
+kp            = 11      # Proportional 
+ki            = 4       # Integral
+kd            = 0       # Derivative
 
 ###############################################################################
 # ADD-ON FUNCTIONS (Interpolate)

@@ -7,13 +7,12 @@ import cv2.aruco as aruco
 import matplotlib.pyplot as plt
 import utils
 from scipy.ndimage import gaussian_filter1d
-from utils import frame_height
+from utils import frame_height, frame_width
 
 ###############################################################################
 # GLOBAL VARIABLES
 ###############################################################################
 output_filename = "1_Processed_image.jpg"
-aruco_path_store = []
 
 ###############################################################################
 # CAMERA FUNCTIONS
@@ -21,6 +20,11 @@ aruco_path_store = []
 def initialize_camera():
     """ Initializes and returns the camera object """
     cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  
+    cap.set(cv2.CAP_PROP_EXPOSURE, -4) 
+    cap.set(cv2.CAP_PROP_BRIGHTNESS, 0) 
     return cap
 
 def release_camera(cap):
@@ -90,7 +94,7 @@ def ellipse_bounding(points, expansion_factor=1.2, num_points=100):
 ###############################################################################
 # SMALL OBSTACLES FILTER
 ###############################################################################
-def filter_small_obstacles(contours, min_points=1):
+def filter_small_obstacles(contours, min_points=10):
     """
     Filters out contours that have min_points or fewer points.
     
@@ -150,7 +154,7 @@ def detect_aruco_and_obstacles(frame, gray):
             pts = marker.reshape((-1, 1, 2)).astype(np.int32)
             cv2.fillPoly(mask, [pts], 255)
         # Dilate the mask to extend the filled region (e.g., by 10 pixels)
-        kernel = np.ones((10, 10), np.uint8)
+        kernel = np.ones((20, 20), np.uint8)
         dilated_mask = cv2.dilate(mask, kernel, iterations=5)
         # Set the dilated region in the edges image to black
         edges[dilated_mask == 255] = 0
@@ -261,7 +265,7 @@ def draw_center_and_orientation_display(frame, center_coordinate, angle, end_poi
     text_lookahead = f"Lookahead: {Adaptive_lookahead_pixels:.2f} px"
     
     # Set text positions
-    top_right_x = frame_width - 20  # 20 pixels offset from right edge
+    top_right_x = frame_width - 200 # 200 pixels offset from right edge
     top_right_y = 30                # Top offset
     line_spacing = 30               # Space between lines
     
@@ -307,8 +311,8 @@ def calculate_center_and_orientation(corners, frame_height):
     
     return center_coordinate, end_point_arrow, angle
 
-def aruco_path_plot(frame, center_coordinate, flag_end_waypoint):
-    global aruco_path_store, frame_height
+def aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path_store):
+    global frame_height
 
     aruco_path_store.append(center_coordinate)
     
@@ -323,3 +327,5 @@ def aruco_path_plot(frame, center_coordinate, flag_end_waypoint):
         for point in aruco_path_store:
             aruco_x_path, aruco_y_path = int(point[0]), int(frame_height - point[1]) # Convert to integers
             cv2.circle(frame, (aruco_x_path, aruco_y_path), 2, (0, 255, 0), -1)  # Green color
+    
+    return aruco_path_store

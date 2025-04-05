@@ -9,8 +9,9 @@ from scipy.ndimage import gaussian_filter1d
 ###############################################################################
 # USER-ADJUSTABLE CONSTANTS
 ###############################################################################
-step_size     = 5      # How far the robot moves each iteration
-epsilon       = 1e-3   # Small step used in gradient/prediction
+step_size           = 10     # How far the robot moves each iteration
+step_size_reach_end = 5      # How far the robot moves each iteration when reaching the goal
+epsilon             = 1e-3   # Small step used in gradient/prediction
 # q           = current position 
 # goal        = target position 
 # obstacles   = list of obstacle positions
@@ -26,7 +27,7 @@ def attractive_potential(q, goal, k_att):
 
 def repulsive_potential(q, obstacles, k_rep, d0):
     U_rep = 0 # U_rep = Repulsive potential (The amplitude of a specific point in the potential field)
-    rep_grad_left = 0
+    rep_grad_left = 0 # Grad is the orientation of the potential force
     rep_grad_right = 0
 
     for obs in obstacles:
@@ -111,8 +112,8 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 # APF PATH PLANNING
 ###############################################################################
-def apf_path_planning(start, goal, obstacles, k_att=0.0002, k_rep=100000.0, d0=65.0, max_iters=1000):
-    global epsilon, step_size
+def apf_path_planning(start, goal, obstacles, k_att=0.00015, k_rep=130000.0, d0=130.0, max_iters=500):
+    global epsilon, step_size, step_size_reach_end
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
     goal = np.array(goal, dtype=np.float64).flatten()
@@ -120,13 +121,15 @@ def apf_path_planning(start, goal, obstacles, k_att=0.0002, k_rep=100000.0, d0=6
     
     for _ in range(max_iters):
         basic_apf_calculated = basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size)
-        q += step_size * basic_apf_calculated  # Move based on gradient
+        q += basic_apf_calculated  # Move based on gradient
         path.append(q.copy())
         
         # Check if goal is reached
-        if np.linalg.norm(q - goal) < 0.1:
+        if np.linalg.norm(q - goal) < step_size_reach_end:
             break
-    
+
+    path.append(goal) # Append goal to path
+
     path = np.array(path, dtype=np.float64).reshape(-1, 2)
     
     # Smooth the path
