@@ -1,7 +1,7 @@
 import requests
-
+import time
 # ESP32 server IP address
-esp32_ip = "http://192.168.1.8"
+esp32_ip = "http://192.168.1.10"
 
 def send_params(value1, value2):
     try:
@@ -46,3 +46,6 @@ def ena_PID(value_ON_OFF):
             print(f"Failed to send ena_PID, status code:", response.status_code)
     except requests.exceptions.RequestException as e:
         pass
+
+ena_PID(0)
+send_params(10,10)
