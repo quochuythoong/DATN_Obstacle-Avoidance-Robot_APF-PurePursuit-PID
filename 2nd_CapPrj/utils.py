@@ -9,7 +9,7 @@ button_width = 80
 button_height = 30
 
 # Parameters for Pure Pursuit
-ConstVelocity = 0.055  # Constant velocity in m/s
+ConstVelocity = 0.07  # Constant velocity in m/s
 LookAHead_dist = 45   # Look-ahead distance in pixels
-LookAHead_dist_RealLife = LookAHead_dist * 0.00102 # Look-ahead distance in meters
+LookAHead_dist_RealLife = LookAHead_dist * 0.00123292 # Look-ahead distance in meters
 Wheels_dist = 0.05    # Distance between wheels in meters

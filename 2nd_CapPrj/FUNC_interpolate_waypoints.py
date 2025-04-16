@@ -7,12 +7,13 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
     for i in range(len(waypoints) - 1):
         start = np.array(waypoints[i])
         end = np.array(waypoints[i + 1])
-        distance = np.linalg.norm(end - start)
+        distance = np.linalg.norm(end - start) + 1e-6  # Avoid division by zero
         direction = (end - start) / distance
         num_steps = int(distance // step_distance) + 1
 
         for step in range(num_steps):
             interpolated_point = start + step * step_distance * direction
+            print(f"Interpolated Point: {interpolated_point[0]}, {interpolated_point[1]}")
             rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
 
             if rounded_point != previous_point:

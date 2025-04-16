@@ -28,7 +28,7 @@ global_path_plot = None      # Global path for plotting (hold on)
 interp_points_ellipse = []   # Global ellipse points
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
 aruco_path = []              # Global ArUco path
-deviation_threshold = 40     # minimum deviation (perpendicular distance) required to create a temporary goal
+deviation_threshold = 1      # minimum deviation (perpendicular distance) required to create a temporary goal
 angle_save = None            # Angle of the detected ArUco marker
 corners_save = None          # Detected corners of the ArUco marker
 

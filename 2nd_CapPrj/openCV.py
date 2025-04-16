@@ -1,9 +1,11 @@
 import cv2
 import numpy as np
+from FUNC_interpolate_waypoints import interpolate_waypoints
+from utils import frame_height
 
 # Initialize OpenCV components and shared variables
 def initialize_camera():
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     return cap
@@ -151,9 +153,12 @@ def draw_center_and_orientation_display(frame, center_coordinate, angle, end_poi
     cv2.putText(frame, text_lookahead, (top_right_x, top_right_y + 2 * line_spacing), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
+def aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path_store):
+    global frame_height
 
-
-
+    aruco_path_store.append(center_coordinate)
+        
+    return aruco_path_store
 
 
 

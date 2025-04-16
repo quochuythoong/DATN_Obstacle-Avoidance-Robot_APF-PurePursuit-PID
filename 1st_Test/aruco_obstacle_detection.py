@@ -6,7 +6,6 @@ import numpy as np
 import cv2.aruco as aruco
 import matplotlib.pyplot as plt
 import utils
-from scipy.ndimage import gaussian_filter1d
 from utils import frame_height, frame_width
 
 ###############################################################################
@@ -19,12 +18,12 @@ output_filename = "1_Processed_image.jpg"
 ###############################################################################
 def initialize_camera():
     """ Initializes and returns the camera object """
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
-    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  
-    cap.set(cv2.CAP_PROP_EXPOSURE, -4) 
-    cap.set(cv2.CAP_PROP_BRIGHTNESS, 0) 
+    # cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  
+    # cap.set(cv2.CAP_PROP_EXPOSURE, -4) 
+    # cap.set(cv2.CAP_PROP_BRIGHTNESS, 0) 
     return cap
 
 def release_camera(cap):
@@ -214,29 +213,6 @@ def detect_aruco_and_obstacles(frame, gray):
 def detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters):
     corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
     return corners, ids
-
-def draw_aruco_path(frame, aruco_path, color=(0, 255, 0), thickness=2):
-    """
-    Draws a green path on the given frame by connecting a sequence of ArUco coordinates.
-
-    Parameters:
-      frame (numpy.ndarray): The current image/frame.
-      aruco_path (list of tuples): A list of (x, y) coordinates of the ArUco over time.
-      color (tuple): BGR color of the line (default is green).
-      thickness (int): Thickness of the drawn line (default is 2).
-
-    Returns:
-      numpy.ndarray: The frame with the drawn path.
-    """
-    # Check if there are at least 2 points to form a line
-    if len(aruco_path) < 2:
-        return frame
-
-    # Draw line segments connecting consecutive points
-    for i in range(len(aruco_path) - 1):
-        pt1 = (int(aruco_path[i][0]), int(aruco_path[i][1]))
-        pt2 = (int(aruco_path[i+1][0]), int(aruco_path[i+1][1]))
-        cv2.line(frame, pt1, pt2, color, thickness)
 
 def draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height):
     """

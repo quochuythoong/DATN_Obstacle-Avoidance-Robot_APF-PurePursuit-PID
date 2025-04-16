@@ -13,7 +13,7 @@ from FUNC_calculate_signed_AH_and_projection import calculate_signed_AH_and_proj
 from FUNC_draw_buttons import draw_buttons
 
 # Control client flag
-flag_client_control = False
+flag_client_control = True
 
 # Shared variables
 clicked_points = []
@@ -34,6 +34,9 @@ omega = 0
 w1 = 0
 w2 = 0
 closest_point_save = ()
+
+aruco_path = []
+
 # Setup camera and window
 cap = openCV.initialize_camera()
 openCV.initialize_window(
@@ -49,7 +52,7 @@ parameters = cv2.aruco.DetectorParameters()
 # PID Parameters
 kp = 13
 ki = 4
-kd = 0.1
+kd = 0.0001
 if flag_client_control:
     send_PID(kp, ki, kd)
     ena_PID(0) # Disable PID on motors initially
@@ -69,17 +72,30 @@ while True:
     if corners:
         center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners, frame_height) 
         # Test filter ArUco
-        if angle_save is not None and corners_save is not None:
-            if angle < 0:
-                if abs(angle + 360 - angle_save) > max_angle_different:
-                    center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-            elif angle >= 0:
-                if abs(angle - angle_save) > max_angle_different:
-                    center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-        else:
-            corners_save = corners
-            angle_save = angle
+        # if angle_save is not None and corners_save is not None:
+        #     if angle < 0:
+        #         if abs(angle + 360 - angle_save) > max_angle_different:
+        #             center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
+        #     elif angle >= 0:
+        #         if abs(angle - angle_save) > max_angle_different:
+        #             center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
+        # else:
+        #     corners_save = corners
+        #     angle_save = angle
         openCV.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
+        if flag_end_waypoint == False:
+            aruco_path = openCV.aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path)
+        elif flag_end_waypoint == True:
+            aruco_path = np.array(aruco_path, dtype=np.float64).reshape(-1, 2)
+        
+            # Interpolate waypoints
+            aruco_path = interpolate_waypoints(aruco_path, step_distance=1.0)
+            
+            # Draw the path on the frame
+            for point in aruco_path:
+                aruco_x_path, aruco_y_path = int(point[0]), int(frame_height - point[1]) # Convert to integers
+                cv2.circle(frame, (aruco_x_path, aruco_y_path), 2, (0, 255, 0), -1)  # Green color
+    
 
     # Draw clicked points
     if clicked_points:
@@ -146,6 +162,7 @@ while True:
             ena_PID(0)
         w1 = 0
         w2 = 0
+        aruco_path = []
     # Approaches the final point, stop the robot
     if flag_end_waypoint:
         if flag_client_control:

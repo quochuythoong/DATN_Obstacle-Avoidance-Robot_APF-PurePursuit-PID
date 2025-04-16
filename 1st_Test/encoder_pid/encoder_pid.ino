@@ -1,9 +1,9 @@
 #include "esp32-hal-timer.h"
 #include <WiFi.h>
-const char* ssid = "Nga Thinh"; 
-const char* password = "teongabinh";
-// const char* ssid = "binhwifi"; 
-// const char* password = "hehehehe";
+
+const char* ssid = "Wifi_name"; 
+const char* password = "Wifi_password";
+
 WiFiServer server(80);
 
 #define ENA_PIN_1 5
@@ -29,6 +29,7 @@ float speed_L = 0;
 float speed_R = 0;                       
 float w_L = 0, w_L_1 = 0, e_L = 0, e_L_1 = 0, e_L_2 = 0;  // PID equation variables
 float w_R = 0, w_R_1 = 0, e_R = 0, e_R_1 = 0, e_R_2 = 0;  // PID equation variables
+
 // PID parameters
 bool pid_flag = false;
 float kp = 5;
@@ -66,8 +67,8 @@ void pid_processing()
   pulseCount_L = 0;
   pulseCount_R = 0;
 
-  w_L_1 = w_L;               // Update previous control signal
-  e_L_2 = e_L_1;              // Update previous error
+  w_L_1 = w_L;                  // Update previous control signal
+  e_L_2 = e_L_1;                // Update previous error
   e_L_1 = e_L;
   e_L = (leftValue - speed_L);  // Calculate current error
   w_L = w_L_1 + kp*(e_L - e_L_1) + ((ki*T)/2)*(e_L + e_L_1) + (kd/T)*(e_L - 2*e_L_1 + e_L_2);  // Calculate PID control signal
@@ -79,10 +80,10 @@ void pid_processing()
     w_L = 0;
   }
 
-  w_R_1 = w_R;               // Update previous control signal
-  e_R_2 = e_R_1;              // Update previous error
+  w_R_1 = w_R;                  // Update previous control signal
+  e_R_2 = e_R_1;                // Update previous error
   e_R_1 = e_R;
-  e_R = (rightValue - speed_R);  // Calculate current error
+  e_R = (rightValue - speed_R); // Calculate current error
   w_R = w_R_1 + kp*(e_R - e_R_1) + ((ki*T)/2)*(e_R + e_R_1) + (kd/T)*(e_R - 2*e_R_1 + e_R_2);  // Calculate PID control signal
   if(w_R > 255) {
     w_R = 255;
@@ -93,10 +94,6 @@ void pid_processing()
   }
   analogWrite(ENA_PIN_2,w_R); 
   analogWrite(ENA_PIN_1,w_L); 
-  // analogWrite(ENA_PIN_2,50); 
-  // analogWrite(ENA_PIN_1,50); 
-  // Serial.println("SPEED_L: " + String(pulseCount_R) + "PWM: " +String(w_L)); 
-  // Serial.println("SPEED_R: " + String(pulseCount_L) + "PWM: " +String(w_R)); 
   Serial.println("SPEED_L: " + String(speed_L) + "PWM: " +String(w_L)); 
   Serial.println("SPEED_R: " + String(speed_R) + "PWM: " +String(w_R)); 
   pid_flag = false;
@@ -146,16 +143,13 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENCODER_CHANNEL_A_R), encoderISR_R, FALLING);
 
   //Correct Timer Setup using New API
-  timer = timerBegin(1e6);  // Set timer frequency to 1 MHz (1 tick = 1 µs)
+  timer = timerBegin(1e6);                // Set timer frequency to 1 MHz (1 tick = 1 µs)
   timerAttachInterrupt(timer, &onTimer);  // Attach ISR
-  timerAlarm(timer, 50000, true, 0);  // 1-second interval, auto-reload enabled
-  timerStart(timer);  // Start the timer
+  timerAlarm(timer, 50000, true, 0);      // 1-second interval, auto-reload enabled
+  timerStart(timer);                      // Start the timer
 }
 
 void loop() {
-  // Serial.println("RPM_L: " + String(float(pulseCount_L)) + "RPM_R: " + String(float(pulseCount_R)));
-  // delay(0.5);
-  // Serial.println("kp: " + String(kp) + "ki: " + String(ki)+ "kd: " + String(kd)); 
   if (WiFi.status() != WL_CONNECTED) 
   {
     Serial.println("WiFi lost. Reconnecting...");
@@ -234,6 +228,4 @@ void loop() {
       }
   }
   client.stop();
-
- 
 }

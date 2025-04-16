@@ -35,7 +35,7 @@ def repulsive_potential(q, obstacles, k_rep, d0):
         if d <= d0:
             U_rep += 0.5 * k_rep * (1/d - 1/d0) ** 2
 
-            # Compute repulsive gradient (force)
+            # Compute repulsive gradient (force) [grad_rep = U_rep d/dx (derivative)]
             grad_rep = k_rep * (1/d - 1/d0) * (1/d**2) * (q - obs) / d  
 
             # Add a small tangential force (perpendicular to gradient)
@@ -114,7 +114,7 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 # APF PATH PLANNING
 ###############################################################################
-def apf_path_planning(start, goal, obstacles, k_att=0.00010, k_rep=130000.0, d0=100.0, max_iters=1000):
+def apf_path_planning(start, goal, obstacles, k_att=0.00010, k_rep=130000.0, d0=90.0, max_iters=1000):
     global epsilon, step_size, step_size_reach_end
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()

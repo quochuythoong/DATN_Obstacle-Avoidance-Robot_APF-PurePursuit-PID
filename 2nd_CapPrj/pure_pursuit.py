@@ -1,8 +1,12 @@
 import math
 from utils import ConstVelocity
 
-k1 = 80 / ConstVelocity # depend on v_robot
-k2 = - 60 / (2*ConstVelocity / 0.0215) # 10 = 45 / 4.5 (depend on 2*omega=w1 + w2)
+k1 = 100 / ConstVelocity # depend on v_robot
+k2 = - 500 / (2*ConstVelocity / 0.0215) # 10 = 45 / 4.5 (depend on 2*omega=w1 + w2)
+
+# k1 = 120 / ConstVelocity                    # Gain for the linear velocity (v)
+# k2 = - 600 / (2 * ConstVelocity / 0.0215)
+
 min_ld = 45 
 wheel_scale = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
@@ -31,12 +35,12 @@ def calculate_wheel_velocities(omega, R, Ld):
         w2 = 0
 
     # Limit wheel velocities
-    if w1 > 20:
+    if w1 > 10:
         w1 = 10
-    if w2 > 20:
+    if w2 > 10:
         w2 = 10
 
-    print(f"Wheel 1: {w1}, Wheel 2: {w2}")
+    # print(f"Wheel 1: {w1}, Wheel 2: {w2}")
     return w1, w2
 
 def velocities_to_RPM(v1, v2):

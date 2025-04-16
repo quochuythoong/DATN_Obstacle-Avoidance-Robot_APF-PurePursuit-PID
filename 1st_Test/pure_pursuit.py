@@ -127,7 +127,7 @@ def calculate_adaptive_lookahead(w1, w2, omega):
     # Robot velocity related to 2 wheels velocity
     v_robot = wheel_scale * (w1 + w2)
 
-    print(f"omega: {omega}, v_robot: {v_robot}")
+    # print(f"omega: {omega}, v_robot: {v_robot}")
 
     # Tuned lookahead distance
     if omega < 0: # Negative omega --> turn right
@@ -141,7 +141,8 @@ def calculate_adaptive_lookahead(w1, w2, omega):
     if ld > max_ld:
         ld = max_ld
         
-    return ld
+    # return ld
+    return 70
 
 ###############################################################################
 # PURE PURSUIT MAIN EXECUTION
