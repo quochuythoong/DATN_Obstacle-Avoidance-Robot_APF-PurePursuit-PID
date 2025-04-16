@@ -46,8 +46,10 @@ def repulsive_potential(q, obstacles, k_rep, d0):
             # If the distance is farther from Goal --> Avoid 
             # If the distance is closer from Goal  --> Go
             # If the APF is the same --> Randomly choose to go or avoid
-            rep_grad_left -= grad_rep + 5 * tangent_rep # 5 is a scaling factor for the tangential force
-            rep_grad_right += grad_rep + 5 * tangent_rep
+            
+            # Sum of all repulsive tangent forces to avoid obstacles smoother
+            rep_grad_left -= tangent_rep
+            rep_grad_right += tangent_rep
 
     return U_rep, rep_grad_left, rep_grad_right
 
@@ -112,7 +114,7 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 # APF PATH PLANNING
 ###############################################################################
-def apf_path_planning(start, goal, obstacles, k_att=0.00015, k_rep=130000.0, d0=130.0, max_iters=500):
+def apf_path_planning(start, goal, obstacles, k_att=0.00010, k_rep=130000.0, d0=100.0, max_iters=1000):
     global epsilon, step_size, step_size_reach_end
     path = [start]
     q = np.array(start, dtype=np.float64).flatten()
