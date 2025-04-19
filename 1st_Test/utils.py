@@ -15,7 +15,7 @@ frame_width  = 1920     # Frame width
 
 # Robot parameters
 ConstVelocity = 0.07    # Constant velocity in m/s (0.1505m/s = 7rad/s * ) --- currently 0.07m/s = 3.255rad/s
-Wheels_dist   = 0.085   # Distance between wheels in meters
+Wheels_dist   = 0.045   # Distance between wheels in meters
 wheel_scale   = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
 # ArUco angle filter parameters
@@ -23,10 +23,10 @@ max_angle_different = 70 # Maximum angle difference in degrees for filtering ArU
 
 # Adaptive Look-ahead parameters 
 real_ld_scale = 0.00123292                             # Ratio between m and px
-k1            = 120 / ConstVelocity                    # Gain for the linear velocity (v)
-k2            = - 500 / (2 * ConstVelocity / 0.0215)   # Gain for the angular velocity (w) --- (2 * ConstVelocity / 0.0215) = w --- currently minus 50 pixels of ld when omega = max = 0.4
-max_ld        = 120                                    # Maximum look-ahead distance (pixels)
-min_ld        = 80                                     # Minimum look-ahead distance (pixels)
+k1            = 100 / ConstVelocity                    # Gain for the linear velocity (v)
+k2            = - 400 / (2 * ConstVelocity / 0.0215)   # Gain for the angular velocity (w) --- (2 * ConstVelocity / 0.0215) = w --- currently minus 50 pixels of ld when omega = max = 0.4
+max_ld        = 100                                    # Maximum look-ahead distance (pixels)
+min_ld        = 50                                     # Minimum look-ahead distance (pixels)
 
 ###############################################################################
 # PID PARAMETERS

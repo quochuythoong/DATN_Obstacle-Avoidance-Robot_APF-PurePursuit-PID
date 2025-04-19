@@ -2,12 +2,12 @@ import math
 from utils import ConstVelocity
 
 k1 = 100 / ConstVelocity # depend on v_robot
-k2 = - 500 / (2*ConstVelocity / 0.0215) # 10 = 45 / 4.5 (depend on 2*omega=w1 + w2)
+k2 = - 400 / (2*ConstVelocity / 0.0215) # 10 = 45 / 4.5 (depend on 2*omega=w1 + w2)
 
 # k1 = 120 / ConstVelocity                    # Gain for the linear velocity (v)
 # k2 = - 600 / (2 * ConstVelocity / 0.0215)
 
-min_ld = 45 
+min_ld = 50 
 wheel_scale = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
 def calculate_omega(AH, v, ld):
@@ -61,4 +61,5 @@ def calculate_adaptive_lookahead(w1, w2, omega):
         tuned_ld = (k1 * v_robot) + (k2 * omega)
     ld = max(tuned_ld, min_ld)  # Ensure lookahead is not below min_ld
     # print(f"Lookahead distance after max: {ld}")
-    return ld
+    # return ld
+    return 150

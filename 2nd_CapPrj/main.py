@@ -50,7 +50,7 @@ aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
 parameters = cv2.aruco.DetectorParameters()  
 
 # PID Parameters
-kp = 13
+kp = 14
 ki = 4
 kd = 0.0001
 if flag_client_control:

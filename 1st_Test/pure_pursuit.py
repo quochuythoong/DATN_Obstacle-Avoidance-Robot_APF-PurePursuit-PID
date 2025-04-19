@@ -40,7 +40,9 @@ def calculate_omega(AH, v, lt):
     omega = (2 * AH * v) / (lt ** 2) # rad/s
     return omega
 
-def calculate_wheel_velocities(omega, R, Ld):
+def calculate_wheel_velocities(omega, Ld):
+    R = ConstVelocity / omega if omega != 0 else float('inf')
+
     if abs(omega) < 1e-6:
         v1 = ConstVelocity
         v2 = ConstVelocity
@@ -141,8 +143,8 @@ def calculate_adaptive_lookahead(w1, w2, omega):
     if ld > max_ld:
         ld = max_ld
         
-    # return ld
-    return 70
+    return ld
+    # return 70
 
 ###############################################################################
 # PURE PURSUIT MAIN EXECUTION
@@ -176,8 +178,7 @@ def pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, fla
 
             # Calculate omega and wheel velocities
             omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-            R = ConstVelocity / omega if omega != 0 else float('inf')
-            w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+            w1, w2 = calculate_wheel_velocities(omega, Wheels_dist)
 
     # Continuous Pure Pursuit
     if global_path:
@@ -194,8 +195,7 @@ def pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, fla
 
             # Calculate omega and wheel velocities
             omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-            R = ConstVelocity / omega if omega != 0 else float('inf')
-            w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+            w1, w2 = calculate_wheel_velocities(omega, Wheels_dist)
 
     # Use adaptive look ahead for next loop
     Adaptive_LookAHead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
