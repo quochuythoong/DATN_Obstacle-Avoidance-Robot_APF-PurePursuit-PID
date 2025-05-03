@@ -65,7 +65,7 @@ def calculate_wheel_velocities(omega, Ld):
     if w2 > 10:
         w2 = 10
 
-    print(f"Wheel 1: {w1}, Wheel 2: {w2}")
+    # print(f"Wheel 1: {w1}, Wheel 2: {w2}")
     return w1, w2
 
 def calculate_signed_AH_and_projection(A, B, C):
@@ -149,21 +149,27 @@ def calculate_adaptive_lookahead(w1, w2, omega):
 ###############################################################################
 # PURE PURSUIT MAIN EXECUTION
 ###############################################################################
-def pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, flag_client_control, aruco_path):
+def pure_pursuit_main(corners, global_path, frame, last_angle, last_end_point_arrow, flag_client_control, aruco_path, flag_initialize_direction, goal_set_points):
     global flag_end_waypoint, distance_current, w1, w2, center_coordinate, latest_waypoint, end_point_arrow, omega, LookAHead_dist_current, Adaptive_LookAHead_pixels, max_angle_different
 
     # Draw center and orientation of the robot
     if corners:
         center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners, frame_height)
-        # # Test filter ArUco
-        # if angle_save is not None and corners_save is not None:
-        #     if angle < 0:
-        #         if abs(angle + 360 - angle_save) > max_angle_different:
-        #             center_coordinate, end_point_arrow, angle = detection.calculate_center_and_orientation(corners_save, frame_height)
-        #             angle_save = angle
-        # else:
-        #     corners_save = corners
-        #     angle_save = angle
+        # Test filter ArUco
+        if last_angle is not None:
+            diff = abs(angle - last_angle)
+            if diff > 180:
+                diff = 360 - diff
+            if diff < 45:
+                last_angle = angle
+                last_end_point_arrow = end_point_arrow
+            else:
+                end_point_arrow = last_end_point_arrow
+                angle = last_angle
+        else: 
+            last_angle = angle
+            last_end_point_arrow = end_point_arrow
+
 
         detection.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_LookAHead_pixels, frame_width, frame_height)
         aruco_path = detection.aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path)
@@ -181,35 +187,41 @@ def pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, fla
             w1, w2 = calculate_wheel_velocities(omega, Wheels_dist)
 
     # Continuous Pure Pursuit
-    if global_path:
+    if global_path and corners:
         closest_point, global_path = find_closest_point(center_coordinate, global_path, Adaptive_LookAHead_pixels)
         if closest_point:
-            print(f"closest_point: {closest_point}")
             latest_waypoint = closest_point
-            cv2.line(frame, 
-                (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
-                (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
-                (0, 255, 255), 2)
+            if flag_initialize_direction == True:
+                print("Running pure pursuit")
+                if flag_client_control:
+                    client.ena_PID(1)
+                
+                cv2.line(frame, 
+                    (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
+                    (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
+                    (0, 255, 255), 2)
 
-            projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+                projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
 
-            # Calculate omega and wheel velocities
-            omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-            w1, w2 = calculate_wheel_velocities(omega, Wheels_dist)
+                # Calculate omega and wheel velocities
+                omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
+                w1, w2 = calculate_wheel_velocities(omega, Wheels_dist)
+                # Send w1, w2 to client
+    
+    if flag_client_control:
+        client.send_params(w1, w2)
 
+           
     # Use adaptive look ahead for next loop
     Adaptive_LookAHead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
     LookAHead_dist_current = Adaptive_LookAHead_pixels * real_ld_scale
 
     # Approaches the final point, stop the robot - else keep moving
     if flag_end_waypoint:
+        flag_initialize_direction = False
         if flag_client_control:
             client.ena_PID(0)  # Disable PID
-        w1 = 0
-        w2 = 0
 
-    # Send w1, w2 to client
-    if flag_client_control:
-        client.send_params(w1, w2)
+    
 
-    return global_path, aruco_path, angle_save, corners_save
+    return global_path, aruco_path, last_angle, last_end_point_arrow, flag_initialize_direction

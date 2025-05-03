@@ -5,7 +5,7 @@ from utils import frame_height
 
 # Initialize OpenCV components and shared variables
 def initialize_camera():
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
     return cap
@@ -105,6 +105,8 @@ def calculate_center_and_orientation(corners, frame_height):
     vec_x = points[1][0] - points[0][0]
     vec_y = points[0][1] - points[1][1]
     angle = np.arctan2(vec_y, vec_x) * 180 / np.pi
+    if angle < 0:
+        angle += 360
     
     # Calculate end of orientation arrow
     arrow_length = 50

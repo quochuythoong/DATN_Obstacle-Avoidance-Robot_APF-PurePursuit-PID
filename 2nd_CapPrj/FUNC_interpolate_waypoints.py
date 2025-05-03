@@ -13,7 +13,7 @@ def interpolate_waypoints(waypoints, step_distance=1.0):
 
         for step in range(num_steps):
             interpolated_point = start + step * step_distance * direction
-            print(f"Interpolated Point: {interpolated_point[0]}, {interpolated_point[1]}")
+            # print(f"Interpolated Point: {interpolated_point[0]}, {interpolated_point[1]}")
             rounded_point = (int(round(interpolated_point[0])), int(round(interpolated_point[1])))
 
             if rounded_point != previous_point:

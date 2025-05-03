@@ -16,6 +16,7 @@ from utils import frame_height, kp, ki, kd
 ###############################################################################
 detection_active = False     # Flag to enable detection
 coordinates_ready = False    # Flag to show PLAN_PATH button
+flag_initialize_direction = False
 predictive_APF_enable = True # Flag to enable Predictive APF
 aruco_coordinates = None     # Detected ArUco marker coordinates
 obstacle_coordinates = None  # Detected obstacle coordinates
@@ -29,8 +30,8 @@ interp_points_ellipse = []   # Global ellipse points
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
 aruco_path = []              # Global ArUco path
 deviation_threshold = 1      # minimum deviation (perpendicular distance) required to create a temporary goal
-angle_save = None            # Angle of the detected ArUco marker
-corners_save = None          # Detected corners of the ArUco marker
+last_angle = None            # Angle of the detected ArUco marker
+last_end_point_arrow = None          # Detected corners of the ArUco marker
 
 ###############################################################################
 # Flag to control client
@@ -61,8 +62,8 @@ flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
 # FRAME INTERACTION 
 ###############################################################################
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path 
-    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path, corners_save, angle_save
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path,flag_initialize_direction
+    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path, last_end_point_arrow, last_angle
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -74,6 +75,7 @@ def mouse_callback(event, x, y, flags, param):
             # Reset various flags and states
             detection_active = False        # Disable obstacle detection
             coordinates_ready = False       # Clear coordinate readiness status
+            flag_initialize_direction = False
 
             # Reset key coordinate variables
             aruco_coordinates = None        # Clear ArUco marker coordinates
@@ -91,6 +93,8 @@ def mouse_callback(event, x, y, flags, param):
             global_path_plot = None         # Clear plotted path
             aruco_path = []                 # Clear ArUco-based path
             pure_pursuit_enable = False     # Disable Pure Pursuit mode
+            last_angle = None 
+            last_end_point_arrow = None
             disable_pure_pursuit()          # Call function to disable Pure Pursuit
 
             # Stop the robot if controlled by a client
@@ -114,8 +118,6 @@ def mouse_callback(event, x, y, flags, param):
 
         elif run_robot and RUN_BUTTON_POS[0] <= x <= RUN_BUTTON_POS[2] and RUN_BUTTON_POS[1] <= y <= RUN_BUTTON_POS[3]:
             print("Running the robot...")
-            if flag_client_control:
-                client.ena_PID(1) # Enable PID
             pure_pursuit_enable = True
             enable_pure_pursuit()
 
@@ -234,13 +236,77 @@ def execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_poin
     output_frame_filename = "2_Final_path.jpg"
     cv2.imwrite(output_frame_filename, frame)
     print(f"Final path saved as {output_frame_filename}")
-    
+
+def initialize_direction(corners, center_coordinate):
+    global flag_initialize_direction, goal_set_points
+    if not flag_initialize_direction:
+        
+        center = np.array(center_coordinate)
+        
+        # Extract top-left and top-right corners
+        top_left = corners[0][0][0]  
+        top_right = corners[0][0][1] 
+        # print(f"corners:{corners}")
+        # Calculate midpoint
+        midpoint_x = (top_left[0] + top_right[0]) / 2
+        midpoint_y = 1080 - ((top_left[1] + top_right[1]) / 2)
+        midpoint = [midpoint_x, midpoint_y]
+
+        head = np.array(midpoint)
+        first_location = np.array(goal_set_points)
+        
+        
+        # Calculate vectors
+        robot_direction = head - center
+        location_direction = first_location - center
+        
+        # Check for zero vectors
+        if np.all(robot_direction == 0) or np.all(location_direction == 0):
+            print("Error: Invalid direction vectors (zero vector detected).")
+            w1, w2 = 0, 0
+            flag_initialize_direction = True
+        else:
+            # Cross product
+            cross_product = robot_direction[0] * location_direction[1] - robot_direction[1] * location_direction[0]
+            # Angle calculation with numerical stability
+            cos_theta = np.dot(robot_direction, location_direction) / (
+                np.linalg.norm(robot_direction) * np.linalg.norm(location_direction)
+            )
+            cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Prevent numerical errors
+            angle_deg = np.degrees(np.arccos(cos_theta))
+            # print(f"angle:{angle_deg}")
+            # Alignment check
+            if angle_deg <= 15:
+                flag_initialize_direction = True
+                w1, w2 = 0, 0  # Stop turning
+                print("Initialize direction successfully")
+                if flag_client_control:
+                    client.ena_PID(0)
+            else:
+                # Handle cross product = 0 (parallel or anti-parallel)
+                if abs(cross_product) < 1e-10:  # Numerical threshold for zero
+                    if angle_deg > 90:  # 180° case: choose a default turn (e.g., clockwise)
+                        w1, w2 = 0, 4  # Clockwise
+                    else:
+                        w1, w2 = 0, 0  # Already aligned (should be caught by angle_deg <= 15)
+                else:
+                    # Normal turn logic
+                    if cross_product > 0:  # Counterclockwise
+                        w1, w2 = 0, 4  # Right wheel on, left wheel off
+                    else:  # Clockwise
+                        w1, w2 = 4, 0  # Left wheel on, right wheel off
+
+                    print(f"Initualizing direction angle: {angle_deg} cross: {cross_product} ")
+        if flag_client_control:
+            client.ena_PID(1)
+            client.send_params(w1, w2)
+            
 ###############################################################################
 # MAIN 
 ###############################################################################
 def main():
     global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable 
-    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd, angle_save, corners_save
+    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd, last_angle, last_end_point_arrow, flag_initialize_direction
     
     # Initialize camera and window
     cap = detection.initialize_camera()
@@ -256,25 +322,31 @@ def main():
         frame, gray = detection.process_frame(cap)
         if frame is None:
             break
-
+        corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
         # Enable RUN button if coordinates are ready
         if detection_active:
+            if corners:
+                center_coordinate,_,_ = detection.calculate_center_and_orientation(corners, frame_height)
+                initialize_direction(corners, center_coordinate)
+            if flag_initialize_direction == True:
             # Perform detection once when START is pressed
-            detection_active = False  # Disable after one capture
-            aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse = detection.detect_aruco_and_obstacles(frame, gray)
-            global_ellipse_plot = interp_points_ellipse
-            coordinates_ready = True
-            print("Aruco Coordinates:", aruco_coordinates)
+                detection_active = False  # Disable after one capture
+                aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse = detection.detect_aruco_and_obstacles(frame, gray)
+                global_ellipse_plot = interp_points_ellipse
+                coordinates_ready = True
+                print("Aruco Coordinates:", aruco_coordinates)
         
         # Perform Path Planning
         if coordinates_ready and path_planning_enable:
             execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame)
             path_planning_enable = False
+            
+            
 
         # Perform Pure Pursuit
         if pure_pursuit_enable:
-            corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
-            global_path, aruco_path, angle_save, corners_save = pure_pursuit_main(corners, global_path, frame, angle_save, corners_save, flag_client_control, aruco_path)
+            # corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
+            global_path, aruco_path, last_angle, last_end_point_arrow, flag_initialize_direction = pure_pursuit_main(corners, global_path, frame, last_angle, last_end_point_arrow, flag_client_control, aruco_path,flag_initialize_direction, goal_set_points)
 
         # Draw buttons and overlay information (GUI)
         draw_overlay(frame)
@@ -290,7 +362,7 @@ def main():
     # Stop the robot as the program exits
     if flag_client_control:
         client.ena_PID(0)
-        client.send_params(0, 0)
+        # client.send_params(0, 0)
 
     detection.release_camera(cap)
     

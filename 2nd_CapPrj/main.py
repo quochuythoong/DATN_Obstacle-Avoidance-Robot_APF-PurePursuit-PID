@@ -15,6 +15,8 @@ from FUNC_draw_buttons import draw_buttons
 # Control client flag
 flag_client_control = True
 
+flag_initialize_direction = False
+
 # Shared variables
 clicked_points = []
 center_coordinate = ()
@@ -27,8 +29,8 @@ latest_waypoint = ()
 distance_current = 0
 Adaptive_lookahead_pixels = 0
 LookAHead_dist_current = LookAHead_dist
-corners_save = None
-angle_save = None
+last_end_point_arrow = None
+last_angle = None
 max_angle_different = 70
 omega = 0
 w1 = 0
@@ -67,21 +69,26 @@ while True:
     draw_buttons(frame, start_button_pos, reset_button_pos, button_width, button_height)
     # Detect ArUco markers
     corners, ids = openCV.detect_aruco_markers(gray, aruco_dict, parameters)
-
+    # print(corners)
     # Draw center and orientation
     if corners:
         center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners, frame_height) 
         # Test filter ArUco
-        # if angle_save is not None and corners_save is not None:
-        #     if angle < 0:
-        #         if abs(angle + 360 - angle_save) > max_angle_different:
-        #             center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-        #     elif angle >= 0:
-        #         if abs(angle - angle_save) > max_angle_different:
-        #             center_coordinate, end_point_arrow, angle = openCV.calculate_center_and_orientation(corners_save, frame_height)
-        # else:
-        #     corners_save = corners
-        #     angle_save = angle
+        if last_angle is not None:
+            diff = abs(angle - last_angle)
+            if diff > 180:
+                diff = 360 - diff
+            if diff < 30:
+                last_angle = angle
+                last_end_point_arrow = end_point_arrow
+            else:
+                end_point_arrow = last_end_point_arrow
+                angle = last_angle
+        else: 
+            last_angle = angle
+            last_end_point_arrow = end_point_arrow
+
+
         openCV.draw_center_and_orientation_display(frame, center_coordinate, angle, end_point_arrow, Adaptive_lookahead_pixels, frame_width, frame_height)
         if flag_end_waypoint == False:
             aruco_path = openCV.aruco_path_plot(frame, center_coordinate, flag_end_waypoint, aruco_path)
@@ -113,19 +120,77 @@ while True:
             closest_point, interpolated_waypoints = find_closest_point(center_coordinate, interpolated_waypoints, Adaptive_lookahead_pixels)
             if closest_point:
                 latest_waypoint = closest_point
-                projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
-                # Calculate omega and wheel velocities
-                print(f"Projection: {projection}, Signed Distance: {signed_distance}")
-                omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-                # print(f"Omega_up: {omega}")
-                R = ConstVelocity / omega if omega != 0 else float('inf')
-                w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
-                # w1, w2 = velocities_to_RPM(v1, v2)
-                #print(f"Left: {w1}, Right: {w2}")
-                cv2.line(frame, 
-                    (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
-                    (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
-                    (0, 255, 255), 2)
+                if flag_initialize_direction == True:
+                    projection, signed_distance = calculate_signed_AH_and_projection(center_coordinate, end_point_arrow, latest_waypoint)
+                    # Calculate omega and wheel velocities
+                    # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
+                    omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
+                    # print(f"Omega_up: {omega}")
+                    R = ConstVelocity / omega if omega != 0 else float('inf')
+                    w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
+                    # w1, w2 = velocities_to_RPM(v1, v2)
+                    #print(f"Left: {w1}, Right: {w2}")
+                    cv2.line(frame, 
+                        (int(center_coordinate[0]), int(-(center_coordinate[1]-frame_height))), 
+                        (int(latest_waypoint[0]), int(-(latest_waypoint[1]-frame_height))), 
+                        (0, 255, 255), 2)
+        
+                if not flag_initialize_direction:
+                    center = np.array(center_coordinate)
+                    
+                    # Extract top-left and top-right corners
+                    top_left = corners[0][0][0]  
+                    top_right = corners[0][0][1] 
+                    # print(f"corners:{corners}")
+                    # Calculate midpoint
+                    midpoint_x = (top_left[0] + top_right[0]) / 2
+                    midpoint_y = 1080 - ((top_left[1] + top_right[1]) / 2)
+                    midpoint = [midpoint_x, midpoint_y]
+
+                    head = np.array(midpoint)
+                    first_location = np.array(latest_waypoint)
+                    # print(f"center:{center} head: {head} first_location: {first_location}")
+                
+                    # Calculate vectors
+                    robot_direction = head - center
+                    location_direction = first_location - center
+                
+                    # Check for zero vectors
+                    if np.all(robot_direction == 0) or np.all(location_direction == 0):
+                        print("Error: Invalid direction vectors (zero vector detected).")
+                        w1, w2 = 0, 0
+                        flag_initialize_direction = True
+                    else:
+                        # Cross product
+                        cross_product = robot_direction[0] * location_direction[1] - robot_direction[1] * location_direction[0]
+            
+                        # Angle calculation with numerical stability
+                        cos_theta = np.dot(robot_direction, location_direction) / (
+                            np.linalg.norm(robot_direction) * np.linalg.norm(location_direction)
+                        )
+                        cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Prevent numerical errors
+                        angle_deg = np.degrees(np.arccos(cos_theta))
+                        # print(f"angle:{angle_deg}")
+                        # Alignment check
+                        if angle_deg <= 30:
+                            flag_initialize_direction = True
+                            w1, w2 = 0, 0  # Stop turning
+                            ena_PID(0)
+                        else:
+                            # Handle cross product = 0 (parallel or anti-parallel)
+                            if abs(cross_product) < 1e-10:  # Numerical threshold for zero
+                                if angle_deg > 90:  # 180° case: choose a default turn (e.g., clockwise)
+                                    w1, w2 = 0, 2  # Clockwise
+                                else:
+                                    w1, w2 = 0, 0  # Already aligned (should be caught by angle_deg <= 15)
+                            else:
+                                # Normal turn logic
+                                if cross_product > 0:  # Counterclockwise
+                                    w1, w2 = 0, 2  # Right wheel on, left wheel off
+                                else:  # Clockwise
+                                    w1, w2 = 2, 0  # Left wheel on, right wheel off
+
+                                print(f"Initualizing direction angle: {angle_deg} cross: {cross_product} ")
 
         if len(interpolated_waypoints) <= 10:
             distance_current = math.sqrt((latest_waypoint[0] - center_coordinate[0])**2 + (latest_waypoint[1] - center_coordinate[1])**2)
@@ -136,7 +201,7 @@ while True:
                 # print(f"Projection: {projection}, Signed Distance: {signed_distance}")
                 # Calculate omega and wheel velocities
                 omega = calculate_omega(signed_distance, ConstVelocity, LookAHead_dist_current)
-                print(f"Omega_down: {omega}")
+                # print(f"Omega_down: {omega}")
                 R = ConstVelocity / omega if omega != 0 else float('inf')
                 w1, w2 = calculate_wheel_velocities(omega, R, Wheels_dist)
                 # w1, w2 = velocities_to_RPM(v1, v2)
@@ -154,9 +219,10 @@ while True:
 
     if start_pressed[0] == False:
         flag_clicked_point_added = False
+        flag_initialize_direction = False
         flag_end_waypoint = False
-        corners_save = None
-        angle_save = None
+        last_end_point_arrow = None
+        last_angle = None
         interpolated_waypoints.clear()
         if flag_client_control:
             ena_PID(0)

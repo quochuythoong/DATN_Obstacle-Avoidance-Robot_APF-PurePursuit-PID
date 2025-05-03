@@ -12,7 +12,7 @@ wheel_scale = 0.01075 # R / 2 = 0.0215 / 2 = 0.01075
 
 def calculate_omega(AH, v, ld):
     omega = (2 * AH * v) / (ld ** 2)
-    print(f"ld: {ld}")
+    # print(f"ld: {ld}")
     return omega
 
 def calculate_wheel_velocities(omega, R, Ld):
@@ -61,5 +61,5 @@ def calculate_adaptive_lookahead(w1, w2, omega):
         tuned_ld = (k1 * v_robot) + (k2 * omega)
     ld = max(tuned_ld, min_ld)  # Ensure lookahead is not below min_ld
     # print(f"Lookahead distance after max: {ld}")
-    # return ld
-    return 150
+    return ld
+    # return 50

@@ -18,7 +18,7 @@ output_filename = "1_Processed_image.jpg"
 ###############################################################################
 def initialize_camera():
     """ Initializes and returns the camera object """
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
     # cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)  

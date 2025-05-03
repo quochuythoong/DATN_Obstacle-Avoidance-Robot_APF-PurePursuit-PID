@@ -1,7 +1,7 @@
 import requests
 
 # ESP32 server IP address
-esp32_ip = "http://192.168.1.11"
+esp32_ip = "http://192.168.1.5"
 
 def send_params(value1, value2):
     try:
