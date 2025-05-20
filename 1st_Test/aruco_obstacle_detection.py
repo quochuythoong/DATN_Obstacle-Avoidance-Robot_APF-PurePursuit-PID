@@ -205,7 +205,7 @@ def detect_aruco_and_obstacles(frame, gray):
 
     print(f"Processed image saved as {output_filename}")
 
-    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, appended_interp_points_ellipse
+    return aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, appended_interp_points_ellipse, small_contours_removed
 
 ###############################################################################
 # PURE PURSUIT ADD-ON FUNCTIONS (LIVE TRACKING)

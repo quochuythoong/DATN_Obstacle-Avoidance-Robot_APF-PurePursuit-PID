@@ -16,7 +16,6 @@ from utils import frame_height, kp, ki, kd
 ###############################################################################
 detection_active = False     # Flag to enable detection
 coordinates_ready = False    # Flag to show PLAN_PATH button
-flag_initialize_direction = False
 predictive_APF_enable = True # Flag to enable Predictive APF
 aruco_coordinates = None     # Detected ArUco marker coordinates
 obstacle_coordinates = None  # Detected obstacle coordinates
@@ -29,14 +28,17 @@ global_path_plot = None      # Global path for plotting (hold on)
 interp_points_ellipse = []   # Global ellipse points
 global_ellipse_plot = None   # Global ellipse for plotting (hold on)
 aruco_path = []              # Global ArUco path
-deviation_threshold = 1      # minimum deviation (perpendicular distance) required to create a temporary goal
+deviation_threshold = 8      # Segment of points considered to create a temporary goal
 last_angle = None            # Angle of the detected ArUco marker
-last_end_point_arrow = None          # Detected corners of the ArUco marker
+last_end_point_arrow = None  # Detected corners of the ArUco marker
+flag_initialize_direction = False # Flag to initialize direction
+flag_goal_inside_obstacle = False # Flag to check if goal is inside obstacle
+flag_valid_goal = False      # Flag to check if goal is valid
 
 ###############################################################################
 # Flag to control client
 ###############################################################################
-flag_client_control = True
+flag_client_control = False
 
 ###############################################################################
 # ARUCO SETUP
@@ -47,23 +49,25 @@ parameters = cv2.aruco.DetectorParameters()
 ###############################################################################
 # BUTTON POSITIONS
 ###############################################################################
-START_BUTTON_POS     = (5, 10, 65, 30)      # Green Start button
-RESET_BUTTON_POS     = (75, 10, 135, 30)    # Red Reset button
-CLEAR_BUTTON_POS     = (75, 35, 135, 55)    # Blue Clear button
-PLAN_PATH_BUTTON_POS = (5, 35, 65, 55)      # Yellow PLAN_PATH button (Initially hidden)
-APF_PAPF_BUTTON_POS  = (5, 60, 135, 80)     # Green/Red APF_PAPF button (toggle APF_PAPF flag)
-RUN_BUTTON_POS       = (145, 10, 205, 80)   # Orange RUN button (appears after path planning)
+START_BUTTON_POS     = (5, 10, 80, 40)       # Green Start button  
+RESET_BUTTON_POS     = (90, 10, 165, 40)     # Red Reset button  
+CLEAR_BUTTON_POS     = (90, 50, 165, 80)     # Blue Clear button  
+PLAN_PATH_BUTTON_POS = (5, 50, 80, 80)       # Yellow PLAN_PATH button (Appears after detection and robot-goal alignment)
+APF_PAPF_BUTTON_POS  = (5, 90, 165, 120)     # Green/Red APF_PAPF button (Toggle APF_PAPF flag)
+RUN_BUTTON_POS       = (180, 10, 260, 120)   # Orange RUN button (Appears after path planning)  
 
 # Position text directly below APF_PAPF button
-flag_text_x = APF_PAPF_BUTTON_POS[0] + 10  # Align with the left side of the button
-flag_text_y = APF_PAPF_BUTTON_POS[3] + 20  # Slightly below the bottom edge
+flag_text_x = APF_PAPF_BUTTON_POS[0]               # Align with the left side of the button
+flag_text_y = APF_PAPF_BUTTON_POS[3] + 30          # Slightly below the bottom edge
+flag_invalid_goal_x = APF_PAPF_BUTTON_POS[0]       # Align with the left side of the button
+flag_invalid_goal_y = APF_PAPF_BUTTON_POS[3] + 60  # Slightly below the bottom edge
 
 ###############################################################################
 # FRAME INTERACTION 
 ###############################################################################
 def mouse_callback(event, x, y, flags, param):
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path,flag_initialize_direction
-    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path, last_end_point_arrow, last_angle
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, global_path, flag_initialize_direction, flag_valid_goal
+    global predictive_APF_enable, run_robot, pure_pursuit_enable, global_path_plot, global_ellipse_plot, aruco_path, last_end_point_arrow, last_angle, flag_goal_inside_obstacle
 
     if event == cv2.EVENT_LBUTTONDOWN:
         # Start detection (capture an image, process, and return coordinates)
@@ -76,6 +80,8 @@ def mouse_callback(event, x, y, flags, param):
             detection_active = False        # Disable obstacle detection
             coordinates_ready = False       # Clear coordinate readiness status
             flag_initialize_direction = False
+            flag_goal_inside_obstacle = False
+            flag_valid_goal = False
 
             # Reset key coordinate variables
             aruco_coordinates = None        # Clear ArUco marker coordinates
@@ -106,7 +112,7 @@ def mouse_callback(event, x, y, flags, param):
             print("RESET pressed")
 
         # Clear button
-        elif CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]:
+        elif (CLEAR_BUTTON_POS[0] <= x <= CLEAR_BUTTON_POS[2] and CLEAR_BUTTON_POS[1] <= y <= CLEAR_BUTTON_POS[3]) and (flag_valid_goal == False) :
             print("Cleared all selections.")
             goal_set_points.clear()
 
@@ -125,13 +131,36 @@ def mouse_callback(event, x, y, flags, param):
         elif APF_PAPF_BUTTON_POS[0] <= x <= APF_PAPF_BUTTON_POS[2] and APF_PAPF_BUTTON_POS[1] <= y <= APF_PAPF_BUTTON_POS[3]:
             predictive_APF_enable = not predictive_APF_enable  # Toggle predictive_APF_enable
 
+        # Clear all next goal_set_points, only continue when RESET button is pressed
+        elif flag_goal_inside_obstacle == True:
+            print("Goal is inside obstacle, please Reset & choose a new Goal")
+            goal_set_points.clear()
+
         # Set goal point
         else:
-            goal_set_points = [x, frame_height - y]
-            print("Selected point:", goal_set_points)
+            if (coordinates_ready and flag_valid_goal) == True:
+                print("Goal set points are valid, please proceed")
+            else:
+                goal_set_points = [x, frame_height - y]  
+                print("Selected point:", goal_set_points)
+
+# Function to block clicks inside the obstacle areas
+def is_inside_obstacle(frame, goal_set_points_check, small_contours_removed_check):
+    global flag_goal_inside_obstacle
+    """ Check if the clicked point is inside any of the detected obstacles """
+    click_point_test = [goal_set_points_check[0], frame_height - goal_set_points_check[1]]
+    if (any(
+        cv2.pointPolygonTest(contour, click_point_test, False) >= 0
+        for contour in small_contours_removed_check
+    )):
+        print("Point is inside an obstacle")
+        flag_goal_inside_obstacle = True
+    else:
+        flag_goal_inside_obstacle = False
+    return flag_goal_inside_obstacle 
 
 # Function to align center for 'Text'
-def draw_text_centered(frame, text, rect, font_scale, thickness=1, color=(255, 255, 255)):
+def draw_text_centered(frame, text, rect, font_scale, thickness=2, color=(255, 255, 255)):
     """ Draw text centered within a rectangle """
     text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
     text_x = rect[0] + (rect[2] - rect[0] - text_size[0]) // 2
@@ -143,9 +172,9 @@ def draw_text_centered(frame, text, rect, font_scale, thickness=1, color=(255, 2
 ###############################################################################
 def draw_overlay(frame):
     """ Draw buttons and overlay with centered text """
-    global global_path_plot, global_ellipse_plot
+    global global_path_plot, global_ellipse_plot, flag_initialize_direction, flag_goal_inside_obstacle, flag_valid_goal
     
-    font_scale = 0.5
+    font_scale = 0.75
 
     # Start Button (Green)
     cv2.rectangle(frame, START_BUTTON_POS[:2], START_BUTTON_POS[2:], (0, 255, 0), -1)
@@ -159,8 +188,8 @@ def draw_overlay(frame):
     cv2.rectangle(frame, CLEAR_BUTTON_POS[:2], CLEAR_BUTTON_POS[2:], (255, 0, 0), -1)
     draw_text_centered(frame, "CLEAR", CLEAR_BUTTON_POS, font_scale, color=(255, 255, 255))
 
-    # PLAN_PATH Button (Yellow) (Only if coordinates are ready)
-    if coordinates_ready:
+    # PLAN_PATH Button (Yellow) (Only if 'coordinates_ready' and 'flag_initialize_direction' are True)
+    if coordinates_ready and flag_initialize_direction:
         cv2.rectangle(frame, PLAN_PATH_BUTTON_POS[:2], PLAN_PATH_BUTTON_POS[2:], (0, 255, 255), -1)
         draw_text_centered(frame, "PLAN", PLAN_PATH_BUTTON_POS, font_scale, color=(0, 0, 0))
 
@@ -181,11 +210,29 @@ def draw_overlay(frame):
     flag_status = "PAPF Enabled" if predictive_APF_enable else "APF Enabled"
     cv2.putText(frame, flag_status, 
                 (flag_text_x, flag_text_y),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0) if predictive_APF_enable else (0, 0, 255), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0) if predictive_APF_enable else (0, 0, 255), 2)
 
     # Draw the set points as red dots
-    if goal_set_points:
+    if goal_set_points and (flag_goal_inside_obstacle == False):
+        # Draw valid goal_set_points
         cv2.circle(frame, (goal_set_points[0], frame_height - goal_set_points[1]), 5, (0, 0, 255), -1)
+    
+    # Warning message if goal_set_points is inside obstacles
+    if flag_goal_inside_obstacle == True:
+        flag_status = "Goal is inside obstacle, please Reset & choose a new Goal."
+        cv2.putText(frame, flag_status, 
+                (flag_invalid_goal_x, flag_invalid_goal_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+        
+    if flag_valid_goal == True:
+        flag_status_line_1 = "Goal set point is valid, please proceed. "
+        flag_status_line_2 = "Or Reset & choose a new Goal."
+        cv2.putText(frame, flag_status_line_1, 
+                (flag_invalid_goal_x, flag_invalid_goal_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 255), 2)
+        cv2.putText(frame, flag_status_line_2, 
+                (flag_invalid_goal_x, flag_invalid_goal_y + 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 255), 2)
 
     # Draw ellipse boundings
     if global_ellipse_plot is not None:
@@ -246,7 +293,7 @@ def initialize_direction(corners, center_coordinate):
         # Extract top-left and top-right corners
         top_left = corners[0][0][0]  
         top_right = corners[0][0][1] 
-        # print(f"corners:{corners}")
+
         # Calculate midpoint
         midpoint_x = (top_left[0] + top_right[0]) / 2
         midpoint_y = 1080 - ((top_left[1] + top_right[1]) / 2)
@@ -254,7 +301,6 @@ def initialize_direction(corners, center_coordinate):
 
         head = np.array(midpoint)
         first_location = np.array(goal_set_points)
-        
         
         # Calculate vectors
         robot_direction = head - center
@@ -274,7 +320,7 @@ def initialize_direction(corners, center_coordinate):
             )
             cos_theta = np.clip(cos_theta, -1.0, 1.0)  # Prevent numerical errors
             angle_deg = np.degrees(np.arccos(cos_theta))
-            # print(f"angle:{angle_deg}")
+
             # Alignment check
             if angle_deg <= 15:
                 flag_initialize_direction = True
@@ -296,7 +342,6 @@ def initialize_direction(corners, center_coordinate):
                     else:  # Clockwise
                         w1, w2 = 4, 0  # Left wheel on, right wheel off
 
-                    print(f"Initualizing direction angle: {angle_deg} cross: {cross_product} ")
         if flag_client_control:
             client.ena_PID(1)
             client.send_params(w1, w2)
@@ -305,8 +350,8 @@ def initialize_direction(corners, center_coordinate):
 # MAIN 
 ###############################################################################
 def main():
-    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable 
-    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd, last_angle, last_end_point_arrow, flag_initialize_direction
+    global detection_active, coordinates_ready, aruco_coordinates, obstacle_coordinates, goal_set_points, path_planning_enable, flag_goal_inside_obstacle
+    global global_path, global_path_plot, global_ellipse_plot, aruco_path, kp, ki, kd, last_angle, last_end_point_arrow, flag_initialize_direction, flag_valid_goal
     
     # Initialize camera and window
     cap = detection.initialize_camera()
@@ -322,30 +367,43 @@ def main():
         frame, gray = detection.process_frame(cap)
         if frame is None:
             break
+        # Continuous ArUco detection for Pure Pursuit
         corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
+        
         # Enable RUN button if coordinates are ready
-        if detection_active:
-            if corners:
+        if detection_active: # Press START button 
+            
+            # Detect ArUco markers and obstacles ONCE, draw ellipse bounding
+            aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse, small_contours_removed = detection.detect_aruco_and_obstacles(frame, gray)
+            global_ellipse_plot = interp_points_ellipse
+            print("Aruco Coordinates:", aruco_coordinates)
+
+            # Check valid goal_set_points
+            if goal_set_points:
+                if is_inside_obstacle(frame, goal_set_points, small_contours_removed) == True:
+                    goal_set_points.clear()
+                else: 
+                    flag_valid_goal = True
+                    print("Valid goal_set_points:", goal_set_points)
+
+            if corners and (flag_goal_inside_obstacle == False) and (goal_set_points != []):
                 center_coordinate,_,_ = detection.calculate_center_and_orientation(corners, frame_height)
                 initialize_direction(corners, center_coordinate)
+            
             if flag_initialize_direction == True:
-            # Perform detection once when START is pressed
-                detection_active = False  # Disable after one capture
-                aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse = detection.detect_aruco_and_obstacles(frame, gray)
-                global_ellipse_plot = interp_points_ellipse
+                # Disable after one capture
+                detection_active = False 
+
+                # All coordinates are ready
                 coordinates_ready = True
-                print("Aruco Coordinates:", aruco_coordinates)
         
         # Perform Path Planning
         if coordinates_ready and path_planning_enable:
             execute_path_planning(aruco_coordinates, obstacle_coordinates, goal_set_points, frame)
             path_planning_enable = False
-            
-            
 
         # Perform Pure Pursuit
         if pure_pursuit_enable:
-            # corners, ids = detection.detect_aruco_markers_pure_pursuit(gray, aruco_dict, parameters)
             global_path, aruco_path, last_angle, last_end_point_arrow, flag_initialize_direction = pure_pursuit_main(corners, global_path, frame, last_angle, last_end_point_arrow, flag_client_control, aruco_path,flag_initialize_direction, goal_set_points)
 
         # Draw buttons and overlay information (GUI)
