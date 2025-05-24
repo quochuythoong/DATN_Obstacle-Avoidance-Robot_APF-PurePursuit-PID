@@ -372,14 +372,10 @@ def main():
         
         # Enable RUN button if coordinates are ready
         if detection_active: # Press START button 
-            
-            # Detect ArUco markers and obstacles ONCE, draw ellipse bounding
-            aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse, small_contours_removed = detection.detect_aruco_and_obstacles(frame, gray)
-            global_ellipse_plot = interp_points_ellipse
-            print("Aruco Coordinates:", aruco_coordinates)
-
             # Check valid goal_set_points
-            if goal_set_points:
+            if goal_set_points and flag_valid_goal == False:
+                            # Detect ArUco markers and obstacles ONCE, draw ellipse bounding
+                aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse, small_contours_removed = detection.detect_aruco_and_obstacles(frame, gray)
                 if is_inside_obstacle(frame, goal_set_points, small_contours_removed) == True:
                     goal_set_points.clear()
                 else: 
@@ -389,6 +385,7 @@ def main():
             if corners and (flag_goal_inside_obstacle == False) and (goal_set_points != []):
                 center_coordinate,_,_ = detection.calculate_center_and_orientation(corners, frame_height)
                 initialize_direction(corners, center_coordinate)
+                print("HEHEHEHEHE")
             
             if flag_initialize_direction == True:
                 # Disable after one capture
