@@ -31,9 +31,9 @@ min_ld        = 50                                     # Minimum look-ahead dist
 ###############################################################################
 # PID PARAMETERS
 ###############################################################################
-kp            = 13      # Proportional 
-ki            = 4       # Integral
-kd            = 0.0001  # Derivative
+kp            = 16.5     # Proportional 
+ki            = 5.5      # Integral
+kd            = 0.0001   # Derivative
 
 ###############################################################################
 # ADD-ON FUNCTIONS (Interpolate)

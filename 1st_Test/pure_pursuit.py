@@ -210,7 +210,6 @@ def pure_pursuit_main(corners, global_path, frame, last_angle, last_end_point_ar
     
     if flag_client_control:
         client.send_params(w1, w2)
-
            
     # Use adaptive look ahead for next loop
     Adaptive_LookAHead_pixels = calculate_adaptive_lookahead(w1, w2, omega)
@@ -221,7 +220,5 @@ def pure_pursuit_main(corners, global_path, frame, last_angle, last_end_point_ar
         flag_initialize_direction = False
         if flag_client_control:
             client.ena_PID(0)  # Disable PID
-
-    
 
     return global_path, aruco_path, last_angle, last_end_point_arrow, flag_initialize_direction

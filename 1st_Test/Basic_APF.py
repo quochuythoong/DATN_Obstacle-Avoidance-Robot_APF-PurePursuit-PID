@@ -116,7 +116,7 @@ def basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size):
 ###############################################################################
 def apf_path_planning(start, goal, obstacles, k_att=0.00010, k_rep=130000.0, d0=90.0, max_iters=1000):
     global epsilon, step_size, step_size_reach_end
-    path = [start]
+    path = [start]  # Initialize path with the start position
     q = np.array(start, dtype=np.float64).flatten()
     goal = np.array(goal, dtype=np.float64).flatten()
     obstacles = np.array(obstacles, dtype=np.float64) if obstacles else np.empty((0, 2))
@@ -124,7 +124,14 @@ def apf_path_planning(start, goal, obstacles, k_att=0.00010, k_rep=130000.0, d0=
     for _ in range(max_iters):
         basic_apf_calculated = basic_apf(q, goal, obstacles, k_att, k_rep, d0, epsilon, step_size)
         q += basic_apf_calculated  # Move based on gradient
-        path.append(q.copy())
+        print(f"Current position: {q}")
+        
+        # count how many existing points are (nearly) equal to q
+        repeats = sum(1 for p in path if np.allclose(p, q, atol=1))
+        if repeats > 2:
+            break
+        else:
+            path.append(q.copy())
         
         # Check if goal is reached
         if np.linalg.norm(q - goal) < step_size_reach_end:

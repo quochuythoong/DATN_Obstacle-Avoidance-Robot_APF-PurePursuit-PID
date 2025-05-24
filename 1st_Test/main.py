@@ -38,7 +38,7 @@ flag_valid_goal = False      # Flag to check if goal is valid
 ###############################################################################
 # Flag to control client
 ###############################################################################
-flag_client_control = False
+flag_client_control = True
 
 ###############################################################################
 # ARUCO SETUP
@@ -89,7 +89,8 @@ def mouse_callback(event, x, y, flags, param):
 
             # Clear stored interpolation and path planning data
             interp_points_ellipse.clear()   # Clear interpolated points for the ellipse
-            global_ellipse_plot.clear()     # Clear global ellipse plot data
+            if (global_ellipse_plot is not None):
+                global_ellipse_plot.clear()     # Clear global ellipse plot data
             goal_set_points.clear()         # Clear goal points
             global_path.clear()             # Clear global planned path
 
@@ -390,6 +391,11 @@ def main():
             if flag_initialize_direction == True:
                 # Disable after one capture
                 detection_active = False 
+
+                # Capturing
+                aruco_coordinates, obstacle_coordinates, frame, end_point_arrow, angle, interp_points_ellipse, _unused_small_contour = detection.detect_aruco_and_obstacles(frame, gray)
+                global_ellipse_plot = interp_points_ellipse
+                print("Aruco Coordinates:", aruco_coordinates)
 
                 # All coordinates are ready
                 coordinates_ready = True
